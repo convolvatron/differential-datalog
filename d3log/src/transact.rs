@@ -1,7 +1,9 @@
 use crate::tcp_network::ArcTcpNetwork;
 use crate::{batch::{Batch, singleton}, Node, Transport, child::output_json};
 //use async_std::sync::Mutex;
-use differential_datalog::{program::Update, D3log, DDlog, DDlogDynamic};
+use differential_datalog::{program::Update, D3log, DDlog, DDlogDynamic, DDlogInventory,
+                           ddval::{DDValConvert, DDValue}};
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex as SyncMutex;
@@ -9,14 +11,14 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use rand::Rng;
 use mm_ddlog::typedefs::d3::{Workers};
 use mm_ddlog::api::HDDlog;
-use differential_datalog::ddval::{DDValConvert, DDValue};
+
 
 pub type Timestamp = u64;
 
 pub struct TransactionManager {
     // svcc needs the membership, so we are going to assign nids
     // progress: Vec<Timestamp>,
-    n: Box<(dyn Transport + Send + Sync)>,
+    n: Option<Box<(dyn Transport + Send + Sync)>>,
     
     // need access to some hddlog to call d3log_localize_val
     h: HDDlog,
@@ -48,9 +50,14 @@ impl ArcTransactionManager {
         let tm = ArcTransactionManager {
             t: Arc::new(SyncMutex::new(TransactionManager::new())),
         };
+        
+        // fix network and tm mutual reference
+        tm.clone().t.lock().expect("lock").n = Some(Box::new(ArcTcpNetwork::new(tm.clone())));
+        
         // race between this and tcp network
-        tm.metadata("d3::Workers", &Workers{location: uuid}.into_ddvalue());
-        tm;
+        
+        tm.clone().metadata("d3::Workers", Workers{location: tm.myself()}.into_ddvalue());
+        tm
     }
 
     pub fn myself(&self) -> Node {
@@ -80,8 +87,10 @@ impl ArcTransactionManager {
         }
 
         for (nid, b) in output.drain() {
-            let tma = &*self.t.lock().expect("lock");            
-            tma.n.send(nid, *b)?
+            let tma = &*self.t.lock().expect("lock");
+            if let Some(x) = &tma.n {  // fix
+                x.send(nid, *b)?
+            }
         }
         Ok(())
     }
@@ -105,24 +114,25 @@ impl ArcTransactionManager {
         }
     }
 
-
     // its not so much that this belongs in TransactionManager, but that
     // can access to the evaluator. return _some_ matching element.
-    pub fn lookup(self, index_name:&str, key:DDValue) -> Result<DDValue, String> {
+    pub fn lookup(self, index_name:&str, key:DDValue) -> Result<Option<DDValue>, String> {
         let tma = &*self.t.lock().expect("lock");            
         let results = tma.h.query_index(tma.h.get_index_id(&index_name)?, key)?;
         // insert method on batch please
-        let mut r = Vec::new();
-        for x in results {
-            r.push(x)
-        }
-        Ok(r)
+        Ok((||{
+            for x in results {
+                return Some(x)
+            }
+            None
+        })())
     }
 
     // this is kind of just a convenience function, but the plumbing around this
     // is a bit fraught
-    pub fn metadata(self, relation: &str, v: DDValue) {
-        tokio::spawn(async move {output_json(&(singleton(relation.to_string(), v))).await?})
+    pub fn metadata(self, relation: &'static str, v: DDValue) {
+        // collect completions 
+        tokio::spawn(async move {output_json(&(singleton(relation, &v).expect("bad metadata relation"))).await});
     }
 }
 
@@ -135,7 +145,7 @@ impl TransactionManager {
             .unwrap_or_else(|err| panic!("Failed to run differential datalog: {}", err));
         let uuid = u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>());
         TransactionManager {
-            n: Box::new(ArcTcpNetwork::new()),
+            n: None, // fix
             h: hddlog, // arc?
             // if we care about locating persistent data on this node across reboots,
             // this uuid will have to be stable. not sure if belongs in TM

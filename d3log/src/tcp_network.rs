@@ -20,6 +20,7 @@ use crate::child::output_json;
 use crate::{json_framer::JsonFramer, transact::ArcTransactionManager, Batch, Node, Transport};
 
 use differential_datalog::ddval::{DDValConvert};
+
 use std::collections::HashMap; //, HashSet};
 use std::net::{SocketAddr};
 use std::sync::Arc;
@@ -108,10 +109,15 @@ impl ArcTcpNetwork {
 // like the latter really
 impl Transport for ArcTcpNetwork {
     fn send(&self, nid: Node, b: Batch) -> Result<(), std::io::Error> {
-        let p = {
-            let x = &mut (*self.n.lock().expect("lock")).peers;
-            x.clone()
+        let peers = {
+            let peers = &mut (*self.n.lock().expect("lock")).peers;
+            peers.clone()
         };
+        let tm = {
+            let tm = &mut (*self.n.lock().expect("lock")).tm;
+            tm.clone()
+        };
+        
         let completion = tokio::spawn(async move {
             // sync lock in async context? - https://tokio.rs/tokio/tutorial/shared-state
             // says its ok. otherwise this gets pretty hard. it does steal a tokio thread
@@ -119,15 +125,16 @@ impl Transport for ArcTcpNetwork {
             let encoded = serde_json::to_string(&b).expect("tcp network send json encoding error");
             println!("send {} {} {}", nid, b, encoded.chars().count());
 
-            let ddv = &Record::u128{nid}.to_ddvalue;
-            let target_dd = self.n.lock().expect("lock").tm.lookup("TcpAddress_by_location", ddv)?;
-            let target_string = target_dd.to_string();
-            let target = target_string.parse();
+            let ddv = nid.into_ddvalue();
+            let target_dd = tm.lookup("TcpAddress_by_location", ddv.into_ddvalue()).expect("tcp address lookup");
+            
+            let target_string = target_dd.unwrap().to_string();
+            let target : SocketAddr = target_string.parse().expect("bad tcp address");
             
             // this is racy because we keep having to drop this lock across
             // await. if we lose, there will be a once used but after idle
             // connection
-            match p
+            match peers
                 .lock()
                 .await
                 .entry(nid)

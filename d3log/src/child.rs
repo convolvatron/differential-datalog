@@ -65,7 +65,7 @@ pub fn start_node(f: Vec<Fd>) {
     let rt = Runtime::new().unwrap();    
     let _eg = rt.enter();    
     let tm = ArcTransactionManager::new();
-    let tn = ArcTcpNetwork::new(tm);
+    let tn = ArcTcpNetwork::new(tm.clone());
 
     rt.block_on(async move {
         for i in f {
