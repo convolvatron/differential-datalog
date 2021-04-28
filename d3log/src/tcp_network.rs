@@ -121,19 +121,22 @@ impl Transport for ArcTcpNetwork {
         let completion = tokio::spawn(async move {
             // sync lock in async context? - https://tokio.rs/tokio/tutorial/shared-state
             // says its ok. otherwise this gets pretty hard. it does steal a tokio thread
-            // for the duration of the wait
+            // for the duration of the acquisition
             let encoded = serde_json::to_string(&b).expect("tcp network send json encoding error");
             println!("send {} {} {}", nid, b, encoded.chars().count());
-
-            let ddv = nid.into_ddvalue();
-            let target_dd = tm.lookup("TcpAddress_by_location", ddv.into_ddvalue()).expect("tcp address lookup");
             
-            let target_string = target_dd.unwrap().to_string();
-            let target : SocketAddr = target_string.parse().expect("bad tcp address");
+            let target_dd = match tm.lookup("d3::TcpAddress_by_location", nid.into_ddvalue()).expect("tcp address lookup") {
+                Some(x) => x,
+                None => return Ok(()) // xxx - make a proper error
+            };
+            let tuple = TcpAddress::from_ddvalue(target_dd);
+            let target_string = tuple.destination.to_string();
+            let target : SocketAddr = target_string.parse().expect(&format!("bad tcp address {}", target_string));
             
             // this is racy because we keep having to drop this lock across
             // await. if we lose, there will be a once used but after idle
-            // connection
+            // connection. i suppose the best fix would be to map to Option<TcpSocket>
+            // (and I guess a queue) so that we can coalesce new connection requests
             match peers
                 .lock()
                 .await
@@ -146,12 +149,14 @@ impl Transport for ArcTcpNetwork {
                 })
                 .lock()
                 .await
-                .write_all(&encoded.as_bytes())
+                .write_all(&encoded.as_bytes()) 
                 .await
             {
                 Ok(_) => Ok(()),
                 // these need to get directed to a retry machine and an async reporting relation
-                Err(x) => panic!("send error {}", x),
+                Err(x) => {
+                    panic!("send error {}", x);
+                }
             }
         });
         (*self.n.lock().expect("lock").sends.lock().expect("lock")).push(completion);

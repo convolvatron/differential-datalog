@@ -1,5 +1,10 @@
 use crate::{
-    json_framer::JsonFramer, tcp_network::ArcTcpNetwork, transact::ArcTransactionManager, Batch,
+    json_framer::JsonFramer,
+    tcp_network::ArcTcpNetwork,
+    transact::ArcTransactionManager,
+    Batch,
+    Node,
+    Transport
 };
 
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, runtime::Runtime, spawn};
@@ -11,13 +16,31 @@ use std::io::{Error, ErrorKind};
 type Fd = std::os::unix::io::RawFd;
 use nix::unistd::*;
 
-const CHILD_INPUT_FD: i32 = 3;
-const CHILD_OUTPUT_FD: i32 = 4;
+const CHILD_INPUT_FD: Fd = 3;
+const CHILD_OUTPUT_FD: Fd = 4;
 
 // xxx - this should follow trait Network
 // really we probably want to have a forwarding table
 // xxx child read input
 
+struct FileDescriptor {
+    input : Fd,
+    output : Fd,
+}
+
+impl Transport for FileDescriptor {
+    fn send(&self, _nid: Node, b: Batch) -> Result<(), std::io::Error> {
+        // use chases unwrap
+        let js = match serde_json::to_string(&b) {
+            Ok(x) => x,
+            Err(_x) => return Err(Error::new(ErrorKind::Other, "oh no!")),
+        };
+        let mut pin = AsyncFd::try_from(self.output)?;
+        tokio::spawn(async move {pin.write_all(js.as_bytes()).await});
+        Ok(())
+    }
+}
+    
 pub async fn output_json(k: &Batch) -> Result<(), std::io::Error> {
     //    println!("{}", serde_json::to_string(&k)?);
     let js = match serde_json::to_string(&k) {

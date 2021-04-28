@@ -1,9 +1,9 @@
+// general module for managing transactions into and out of ddlog
+
 use crate::tcp_network::ArcTcpNetwork;
 use crate::{batch::{Batch, singleton}, Node, Transport, child::output_json};
-//use async_std::sync::Mutex;
 use differential_datalog::{program::Update, D3log, DDlog, DDlogDynamic, DDlogInventory,
                            ddval::{DDValConvert, DDValue}};
-
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex as SyncMutex;
