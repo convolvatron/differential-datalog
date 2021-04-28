@@ -16,9 +16,9 @@ use std::str;
 type Node = D3logLocationId;
 
 trait Transport {
-    fn send(&self, nid: Node, b: Batch) -> Result<(), std::io::Error> ;
+    fn send(&self, nid: Node, b: Batch) -> Result<(), std::io::Error>;
 }
-    
+
 use std::convert::TryFrom;
 fn matrix(mat: Vec<Vec<u64>>) -> Result<Batch, String> {
     let mut b = Batch::new();

@@ -1,10 +1,6 @@
 use crate::{
-    json_framer::JsonFramer,
-    tcp_network::ArcTcpNetwork,
-    transact::ArcTransactionManager,
-    Batch,
-    Node,
-    Transport
+    json_framer::JsonFramer, tcp_network::ArcTcpNetwork, transact::ArcTransactionManager, Batch,
+    Node, Transport,
 };
 
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, runtime::Runtime, spawn};
@@ -24,8 +20,8 @@ const CHILD_OUTPUT_FD: Fd = 4;
 // xxx child read input
 
 struct FileDescriptor {
-    input : Fd,
-    output : Fd,
+    input: Fd,
+    output: Fd,
 }
 
 impl Transport for FileDescriptor {
@@ -36,11 +32,11 @@ impl Transport for FileDescriptor {
             Err(_x) => return Err(Error::new(ErrorKind::Other, "oh no!")),
         };
         let mut pin = AsyncFd::try_from(self.output)?;
-        tokio::spawn(async move {pin.write_all(js.as_bytes()).await});
+        tokio::spawn(async move { pin.write_all(js.as_bytes()).await });
         Ok(())
     }
 }
-    
+
 pub async fn output_json(k: &Batch) -> Result<(), std::io::Error> {
     //    println!("{}", serde_json::to_string(&k)?);
     let js = match serde_json::to_string(&k) {
@@ -85,8 +81,8 @@ async fn read_output(t: ArcTransactionManager, f: Box<Fd>) -> Result<(), std::io
 }
 
 pub fn start_node(f: Vec<Fd>) {
-    let rt = Runtime::new().unwrap();    
-    let _eg = rt.enter();    
+    let rt = Runtime::new().unwrap();
+    let _eg = rt.enter();
     let tm = ArcTransactionManager::new();
     let tn = ArcTcpNetwork::new(tm.clone());
 
@@ -102,7 +98,7 @@ pub fn start_node(f: Vec<Fd>) {
                 }
             });
         }
-        
+
         // return address through here?
         match tn.bind().await {
             Ok(_) => (),

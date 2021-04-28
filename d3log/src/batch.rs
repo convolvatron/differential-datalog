@@ -155,15 +155,15 @@ impl IntoIterator for Batch {
 }
 
 impl Batch {
-    // there should be a new that allocates it own and a from deltamap for
-    // the wrap case
-
     pub fn from(b: DeltaMap<differential_datalog::ddval::DDValue>) -> Batch {
-        Batch { b, timestamp: 0 }        
+        Batch { b, timestamp: 0 }
     }
-    
+
     pub fn new() -> Batch {
-        Batch { b: DeltaMap::<differential_datalog::ddval::DDValue>::new(), timestamp: 0 }
+        Batch {
+            b: DeltaMap::<differential_datalog::ddval::DDValue>::new(),
+            timestamp: 0,
+        }
     }
 
     pub fn insert(&mut self, r: RelId, v: differential_datalog::ddval::DDValue, weight: u32) {

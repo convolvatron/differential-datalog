@@ -15,14 +15,12 @@ use tokio::{
 
 use mm_ddlog::typedefs::d3::{Connection, TcpAddress};
 
-use crate::batch::singleton;
-use crate::child::output_json;
 use crate::{json_framer::JsonFramer, transact::ArcTransactionManager, Batch, Node, Transport};
 
-use differential_datalog::ddval::{DDValConvert};
+use differential_datalog::ddval::DDValConvert;
 
 use std::collections::HashMap; //, HashSet};
-use std::net::{SocketAddr};
+use std::net::SocketAddr;
 use std::sync::Arc;
 use std::sync::Mutex as SyncMutex;
 
@@ -30,7 +28,7 @@ use std::sync::Mutex as SyncMutex;
 pub struct TcpNetwork {
     peers: Arc<Mutex<HashMap<Node, Arc<Mutex<TcpStream>>>>>,
     sends: Arc<SyncMutex<Vec<JoinHandle<Result<(), std::io::Error>>>>>, // ;JoinHandle<()>>>>,
-    tm: ArcTransactionManager
+    tm: ArcTransactionManager,
 }
 
 #[derive(Clone)]
@@ -41,12 +39,12 @@ pub struct ArcTcpNetwork {
 impl ArcTcpNetwork {
     pub fn new(tm: ArcTransactionManager) -> ArcTcpNetwork {
         ArcTcpNetwork {
-            n: Arc::new(SyncMutex::new(
-                TcpNetwork {
-                    peers: Arc::new(Mutex::new(HashMap::new())),
-                    sends: Arc::new(SyncMutex::new(Vec::new())),
-                    tm,
-                }))}
+            n: Arc::new(SyncMutex::new(TcpNetwork {
+                peers: Arc::new(Mutex::new(HashMap::new())),
+                sends: Arc::new(SyncMutex::new(Vec::new())),
+                tm,
+            })),
+        }
     }
 
     // xxx - caller should get the address and send the address fact, not us
@@ -55,14 +53,18 @@ impl ArcTcpNetwork {
         let a = listener.local_addr().unwrap();
 
         {
-            let tm = &(*self.n.lock().expect("lock")).tm;
-            output_json(&(singleton("d3::TcpAddress", 
-                                    &TcpAddress {
-                                        location: tm.myself(),
-                                        destination: a.to_string(),
-                                    }.into_ddvalue()))?).await?;
+            let tm = (*self.n.lock().expect("lock")).tm.clone();
+            let location = tm.myself();
+            tm.metadata(
+                "d3::TcpAddress",
+                TcpAddress {
+                    location,
+                    destination: a.to_string(),
+                }
+                .into_ddvalue(),
+            );
         }
-        
+
         loop {
             // exchange ids
             let (socket, _a) = listener.accept().await?;
@@ -70,12 +72,12 @@ impl ArcTcpNetwork {
             {
                 let tm = self.n.lock().expect("lock").tm.clone();
                 let m = tm.myself();
-                tm.metadata( "d3::Connection", Connection {
-                    me: m,
-                    them: m,
-                }.into_ddvalue());
+                tm.metadata(
+                    "d3::Connection",
+                    Connection { me: m, them: m }.into_ddvalue(),
+                );
             }
-            
+
             // well, this is a huge .. something. if i just use the socket
             // in the async move block, it actually gets dropped
             let sclone = Arc::new(Mutex::new(socket));
@@ -117,22 +119,27 @@ impl Transport for ArcTcpNetwork {
             let tm = &mut (*self.n.lock().expect("lock")).tm;
             tm.clone()
         };
-        
+
         let completion = tokio::spawn(async move {
             // sync lock in async context? - https://tokio.rs/tokio/tutorial/shared-state
             // says its ok. otherwise this gets pretty hard. it does steal a tokio thread
             // for the duration of the acquisition
             let encoded = serde_json::to_string(&b).expect("tcp network send json encoding error");
             println!("send {} {} {}", nid, b, encoded.chars().count());
-            
-            let target_dd = match tm.lookup("d3::TcpAddress_by_location", nid.into_ddvalue()).expect("tcp address lookup") {
+
+            let target_dd = match tm
+                .lookup("d3::TcpAddress_by_location", nid.into_ddvalue())
+                .expect("tcp address lookup")
+            {
                 Some(x) => x,
-                None => return Ok(()) // xxx - make a proper error
+                None => return Ok(()), // xxx - make a proper error
             };
             let tuple = TcpAddress::from_ddvalue(target_dd);
             let target_string = tuple.destination.to_string();
-            let target : SocketAddr = target_string.parse().expect(&format!("bad tcp address {}", target_string));
-            
+            let target: SocketAddr = target_string
+                .parse()
+                .expect(&format!("bad tcp address {}", target_string));
+
             // this is racy because we keep having to drop this lock across
             // await. if we lose, there will be a once used but after idle
             // connection. i suppose the best fix would be to map to Option<TcpSocket>
@@ -142,14 +149,12 @@ impl Transport for ArcTcpNetwork {
                 .await
                 .entry(nid)
                 .or_insert(match TcpStream::connect(target).await {
-                    Ok(x) => {
-                        Arc::new(Mutex::new(x))
-                    }
+                    Ok(x) => Arc::new(Mutex::new(x)),
                     Err(_x) => panic!("connection failure {}", target),
                 })
                 .lock()
                 .await
-                .write_all(&encoded.as_bytes()) 
+                .write_all(&encoded.as_bytes())
                 .await
             {
                 Ok(_) => Ok(()),
