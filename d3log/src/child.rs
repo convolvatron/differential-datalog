@@ -62,16 +62,16 @@ async fn read_output(t: ArcTransactionManager, f: Box<Fd>) -> Result<(), std::io
 }
 
 pub fn start_node(f: Vec<Fd>) {
-    let t = ArcTransactionManager::new();
-    let n = ArcTcpNetwork::new();
-    let rt = Runtime::new().unwrap();
-    let _eg = rt.enter();
+    let rt = Runtime::new().unwrap();    
+    let _eg = rt.enter();    
+    let tm = ArcTransactionManager::new();
+    let tn = ArcTcpNetwork::new(tm);
 
     rt.block_on(async move {
         for i in f {
-            let tclone = t.clone();
+            let tmclone = tm.clone();
             spawn(async move {
-                match read_output(tclone, Box::new(i)).await {
+                match read_output(tmclone, Box::new(i)).await {
                     Ok(_) => (),
                     Err(x) => {
                         println!("err {}", x);
@@ -79,7 +79,9 @@ pub fn start_node(f: Vec<Fd>) {
                 }
             });
         }
-        match n.bind(t).await {
+        
+        // return address through here?
+        match tn.bind().await {
             Ok(_) => (),
             Err(x) => {
                 panic!("bind failure {}", x);

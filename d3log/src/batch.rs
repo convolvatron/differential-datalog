@@ -59,7 +59,7 @@ impl<'de> Visitor<'de> for BatchVisitor {
     where
         E: SeqAccess<'de>,
     {
-        let mut b = Batch::new(DeltaMap::new());
+        let mut b = Batch::new();
 
         let t: Option<u64> = e.next_element()?;
         match t {
@@ -158,8 +158,12 @@ impl Batch {
     // there should be a new that allocates it own and a from deltamap for
     // the wrap case
 
-    pub fn new(b: DeltaMap<differential_datalog::ddval::DDValue>) -> Batch {
-        Batch { b, timestamp: 0 }
+    pub fn from(b: DeltaMap<differential_datalog::ddval::DDValue>) -> Batch {
+        Batch { b, timestamp: 0 }        
+    }
+    
+    pub fn new() -> Batch {
+        Batch { b: DeltaMap::<differential_datalog::ddval::DDValue>::new(), timestamp: 0 }
     }
 
     pub fn insert(&mut self, r: RelId, v: differential_datalog::ddval::DDValue, weight: u32) {
@@ -182,7 +186,7 @@ pub fn singleton(
         }
     };
 
-    let mut d = Batch::new(DeltaMap::<differential_datalog::ddval::DDValue>::new());
+    let mut d = Batch::new();
     d.insert(mrel, v.clone(), 1);
     Ok(d)
 }

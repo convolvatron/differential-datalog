@@ -8,7 +8,7 @@ use crate::{batch::Batch, child::start_children, typedefs::matrix::Matrix};
 
 use differential_datalog::ddval::DDValConvert;
 use differential_datalog::D3logLocationId;
-use differential_datalog::DeltaMap;
+
 use mm_ddlog::*;
 use rustop::opts;
 use std::str;
@@ -21,7 +21,7 @@ trait Transport {
     
 use std::convert::TryFrom;
 fn matrix(mat: Vec<Vec<u64>>) -> Result<Batch, String> {
-    let mut b = Batch::new(DeltaMap::new());
+    let mut b = Batch::new();
     let relid = Relations::try_from("matrix::Matrix")
         .map_err(|_| format!("Unknown relation {}", "Matrix"))?;
 

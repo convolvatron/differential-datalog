@@ -1,13 +1,17 @@
 // this file intented to specify the 'syscall interface' for the
-// d3log supervisor
+// d3log supervisor. it seems like it needs to have related
+// but not identical definitions?
 
 // this is really everyone we ever hear from. importantly - is this
 // a global relation, or a local one (myself, other)
-input relation Workers(x: D3logLocationId)
+input relation Workers(location: D3logLocationId)
 
 // should include the source address, port, and timestamp
 // we dont actually know the nid w/o negotiation
-input relation Connection(x: D3logLocationId)
+input relation Connection(me: D3logLocationId, them:D3logLocationId)
 
 // we should have address types here
-input relation TcpAddress(x: D3logLocationId, destination: string)
+input relation TcpAddress(location: D3logLocationId, destination: string)
+
+// this isn't part of the 'syscall interface', but something we use internally
+index TcpAddress_by_location(from: D3logLocationId) on TcpAddress(from, _)
