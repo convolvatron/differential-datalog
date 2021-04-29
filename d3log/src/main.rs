@@ -19,6 +19,7 @@ trait Transport {
     fn send(&self, nid: Node, b: Batch) -> Result<(), std::io::Error>;
 }
 
+type Port = Box<(dyn Transport + Send + Sync)>;
 use std::convert::TryFrom;
 fn matrix(mat: Vec<Vec<u64>>) -> Result<Batch, String> {
     let mut b = Batch::new();

@@ -1,7 +1,6 @@
 // general module for managing transactions into and out of ddlog
 
-use crate::tcp_network::ArcTcpNetwork;
-use crate::{batch::Batch, Node, Transport};
+use crate::{batch::Batch, Node, Port};
 use differential_datalog::{
     ddval::{DDValConvert, DDValue},
     program::Update,
@@ -9,27 +8,19 @@ use differential_datalog::{
 };
 use mm_ddlog::api::HDDlog;
 use mm_ddlog::typedefs::d3::Workers;
-use rand::Rng;
 
 use std::collections::HashMap;
+use std::io::{Error, ErrorKind};
 use std::sync::Arc;
 use std::sync::Mutex as SyncMutex;
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::io::{Error, ErrorKind};
 
 pub type Timestamp = u64;
 
 pub struct TransactionManager {
-    // svcc needs the membership, so we are going to assign nids
-    // progress: Vec<Timestamp>,
-
-    // these are bound late because they depend on tm
-    network: Option<Box<(dyn Transport + Send + Sync)>>,
-    management: Option<Box<(dyn Transport + Send + Sync)>>,
-
-    // need access to some hddlog to call d3log_localize_val
+    network: Port,
+    management: Port,
     evaluator: HDDlog,
-
     me: Node,
 }
 
@@ -53,14 +44,12 @@ pub struct ArcTransactionManager {
 }
 
 impl ArcTransactionManager {
-    pub fn new() -> ArcTransactionManager {
+    pub fn new(uuid: Node, network: Port, management: Port) -> ArcTransactionManager {
         let tm = ArcTransactionManager {
-            t: Arc::new(SyncMutex::new(TransactionManager::new())),
+            t: Arc::new(SyncMutex::new(TransactionManager::new(
+                uuid, network, management,
+            ))),
         };
-
-        // fix network and tm mutual reference
-        tm.t.lock().expect("lock").network = Some(Box::new(ArcTcpNetwork::new(tm.clone())));
-
         // race between this and tcp network
 
         tm.clone().metadata(
@@ -119,15 +108,19 @@ impl ArcTransactionManager {
         }
 
         // wrapper to translate hddlog's string error to our standard-by-default std::io::Error
-        match (||->Result<Batch,String>{
+        match (|| -> Result<Batch, String> {
             h.transaction_start()?;
             h.apply_updates(&mut upd.clone().drain(..))?;
             Ok(Batch::from(h.transaction_commit_dump_changes()?))
         })() {
-            Ok(x)=>Ok(x),
-            Err(e)=> return Err(Error::new(ErrorKind::Other,
-                                           format!("Failed to update differential datalog: {}", e)))
-        }            
+            Ok(x) => Ok(x),
+            Err(e) => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!("Failed to update differential datalog: {}", e),
+                ))
+            }
+        }
     }
 
     // its not so much that this belongs in TransactionManager, but that
@@ -165,17 +158,15 @@ impl ArcTransactionManager {
 impl TransactionManager {
     fn start() {}
 
-    pub fn new() -> TransactionManager {
+    pub fn new(me: Node, network: Port, management: Port) -> TransactionManager {
         let (hddlog, _init_output) = HDDlog::run(1, false)
             .unwrap_or_else(|err| panic!("Failed to run differential datalog: {}", err));
-        let uuid = u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>());
+
         TransactionManager {
-            network: None,     // fix recrusive reference
-            management: None,  // fix recrusive reference
-            evaluator: hddlog, // arc?
-            // if we care about locating persistent data on this node across reboots,
-            // this uuid will have to be stable. not sure if belongs in TM
-            me: uuid,
+            network,
+            management,
+            evaluator: hddlog,
+            me,
         }
     }
 }

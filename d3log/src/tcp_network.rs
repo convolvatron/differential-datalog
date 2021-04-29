@@ -15,7 +15,7 @@ use tokio::{
 
 use mm_ddlog::typedefs::d3::{Connection, TcpAddress};
 
-use crate::{json_framer::JsonFramer, transact::ArcTransactionManager, Batch, Node, Transport};
+use crate::{json_framer::JsonFramer, Batch, Node, Port, Transport};
 
 use differential_datalog::ddval::DDValConvert;
 
@@ -29,7 +29,8 @@ pub struct TcpNetwork {
     // The double-synchronization here is fairly suspect to me
     peers: Arc<Mutex<HashMap<Node, Arc<Mutex<TcpStream>>>>>,
     sends: Arc<SyncMutex<Vec<JoinHandle<Result<(), std::io::Error>>>>>, // ;JoinHandle<()>>>>,
-    tm: ArcTransactionManager,
+    management: Port,
+    me: Node,
 }
 
 #[derive(Clone)]
@@ -38,12 +39,13 @@ pub struct ArcTcpNetwork {
 }
 
 impl ArcTcpNetwork {
-    pub fn new(tm: ArcTransactionManager) -> ArcTcpNetwork {
+    pub fn new(me: Node, management: Port) -> ArcTcpNetwork {
         ArcTcpNetwork {
             n: Arc::new(SyncMutex::new(TcpNetwork {
                 peers: Arc::new(Mutex::new(HashMap::new())),
                 sends: Arc::new(SyncMutex::new(Vec::new())),
-                tm,
+                management,
+                me,
             })),
         }
     }
@@ -54,15 +56,19 @@ impl ArcTcpNetwork {
         let a = listener.local_addr().unwrap();
 
         {
-            let tm = (*self.n.lock().expect("lock")).tm.clone();
-            let location = tm.myself();
-            tm.metadata(
-                "d3::TcpAddress",
-                TcpAddress {
-                    location,
-                    destination: a.to_string(),
-                }
-                .into_ddvalue(),
+            let tn = self.n.lock().expect("lock");
+
+            tn.management.send(
+                0, // send to whom?
+                Batch::singleton(
+                    "d3::TcpAddress",
+                    &TcpAddress {
+                        location: tn.me,
+                        destination: a.to_string(),
+                    }
+                    .into_ddvalue(),
+                )
+                .expect("TcpAddress singleton"),
             );
         }
 
@@ -71,11 +77,18 @@ impl ArcTcpNetwork {
             let (socket, _a) = listener.accept().await?;
 
             {
-                let tm = self.n.lock().expect("lock").tm.clone();
-                let m = tm.myself();
-                tm.metadata(
-                    "d3::Connection",
-                    Connection { me: m, them: m }.into_ddvalue(),
+                let tn = self.n.lock().expect("lock");
+                tn.management.send(
+                    0,
+                    Batch::singleton(
+                        "d3::Connection",
+                        &Connection {
+                            me: tn.me,
+                            them: tn.me,
+                        }
+                        .into_ddvalue(),
+                    )
+                    .expect("singleton"),
                 );
             }
 

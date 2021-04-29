@@ -1,11 +1,12 @@
 use crate::{
     json_framer::JsonFramer, tcp_network::ArcTcpNetwork, transact::ArcTransactionManager, Batch,
-    Node, Transport,
+    Node, Port, Transport,
 };
 
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, runtime::Runtime, spawn};
 use tokio_fd::AsyncFd;
 
+use rand::Rng;
 use std::convert::TryFrom;
 use std::io::{Error, ErrorKind};
 
@@ -60,9 +61,19 @@ async fn read_output(t: ArcTransactionManager, f: Box<Fd>) -> Result<(), std::io
 pub fn start_node(f: Vec<Fd>) {
     let rt = Runtime::new().unwrap();
     let _eg = rt.enter();
-    let tm = ArcTransactionManager::new();
-    let tn = ArcTcpNetwork::new(tm.clone());
-    // set tm.management!
+
+    // if we care about locating persistent data on this node across reboots,
+    // or using quorum this uuid will have to be stable
+    let uuid = u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>());
+
+    // this should be allocated from outside, primary has this
+    // routed to a broadcast (and inputs should be routed to that broadcast)
+    let m: Port = Box::new(&FileDescriptor {
+        input: CHILD_INPUT_FD,
+        output: CHILD_OUTPUT_FD,
+    });
+    let tn = Box::new(&ArcTcpNetwork::new(uuid, m));
+    let tm = ArcTransactionManager::new(uuid, tn, m);
 
     rt.block_on(async move {
         for i in f {
