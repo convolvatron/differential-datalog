@@ -73,21 +73,18 @@ impl JsonFramer {
                     self.reassembly.push(*i);
                 }
 
-                match ENDS.get(c) {
-                    Some(k) => {
-                        if *k != self.w.pop().expect("mismatched grouping") {
-                            return Err(Error::new(ErrorKind::Other, "mismatched grouping"));
-                        }
-                        if self.w.is_empty() {
-                            n.push(
-                                std::str::from_utf8(&self.reassembly[..])
-                                    .map_err(|_| Error::new(ErrorKind::Other, "utf8 error"))?
-                                    .to_owned(),
-                            );
-                            self.reassembly.truncate(0);
-                        }
+                if let Some(k) = ENDS.get(c) {
+                    if *k != self.w.pop().expect("mismatched grouping") {
+                        return Err(Error::new(ErrorKind::Other, "mismatched grouping"));
                     }
-                    None => (),
+                    if self.w.is_empty() {
+                        n.push(
+                            std::str::from_utf8(&self.reassembly[..])
+                                .map_err(|_| Error::new(ErrorKind::Other, "utf8 error"))?
+                                .to_owned(),
+                        );
+                        self.reassembly.truncate(0);
+                    }
                 }
             }
         }
