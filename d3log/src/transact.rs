@@ -1,7 +1,7 @@
 // general module for managing transactions into and out of ddlog
 
 use crate::tcp_network::ArcTcpNetwork;
-use crate::{batch::Batch, child::output_json, Node, Transport};
+use crate::{batch::Batch, Node, Transport};
 use differential_datalog::{
     ddval::{DDValConvert, DDValue},
     program::Update,
@@ -20,10 +20,13 @@ pub type Timestamp = u64;
 pub struct TransactionManager {
     // svcc needs the membership, so we are going to assign nids
     // progress: Vec<Timestamp>,
-    n: Option<Box<(dyn Transport + Send + Sync)>>,
+
+    // these are bound late because they depend on tm
+    network: Option<Box<(dyn Transport + Send + Sync)>>,
+    management: Option<Box<(dyn Transport + Send + Sync)>>,
 
     // need access to some hddlog to call d3log_localize_val
-    h: HDDlog,
+    evaluator: HDDlog,
 
     me: Node,
 }
@@ -54,7 +57,7 @@ impl ArcTransactionManager {
         };
 
         // fix network and tm mutual reference
-        tm.t.lock().expect("lock").n = Some(Box::new(ArcTcpNetwork::new(tm.clone())));
+        tm.t.lock().expect("lock").network = Some(Box::new(ArcTcpNetwork::new(tm.clone())));
 
         // race between this and tcp network
 
@@ -79,7 +82,7 @@ impl ArcTransactionManager {
             let tma = &*self.t.lock().expect("lock");
             // we dont really need an instance here, do we? - i guess the state comes from
             // prog. we certainly dont need a lock on tm
-            match tma.h.d3log_localize_val(rel, v.clone()) {
+            match tma.evaluator.d3log_localize_val(rel, v.clone()) {
                 Ok((loc_id, in_rel, inner_val)) => {
                     // if loc_id is null, we aren't to forward
                     if let Some(loc) = loc_id {
@@ -96,9 +99,9 @@ impl ArcTransactionManager {
 
         for (nid, b) in output.drain() {
             let tma = &*self.t.lock().expect("lock");
-            if let Some(x) = &tma.n {
-                // fix
-                x.send(nid, *b)?
+            // fix tm network mutual reference
+            if let Some(n) = &tma.network {
+                n.send(nid, *b)?
             }
         }
         Ok(())
@@ -106,7 +109,7 @@ impl ArcTransactionManager {
 
     pub async fn eval(self, input: Batch) -> Result<Batch, String> {
         let tm = self.t.lock().expect("lock");
-        let h = &(*tm).h;
+        let h = &(*tm).evaluator;
 
         // kinda harsh that we feed ddlog updates and get out a deltamap
         let mut upd = Vec::new();
@@ -127,7 +130,9 @@ impl ArcTransactionManager {
     // can access to the evaluator. return _some_ matching element.
     pub fn lookup(self, index_name: &str, key: DDValue) -> Result<Option<DDValue>, String> {
         let tma = &*self.t.lock().expect("lock");
-        let results = tma.h.query_index(tma.h.get_index_id(&index_name)?, key)?;
+        let results = tma
+            .evaluator
+            .query_index(tma.evaluator.get_index_id(&index_name)?, key)?;
         // insert method on batch please
         Ok((|| {
             for x in results {
@@ -141,23 +146,29 @@ impl ArcTransactionManager {
     // is a bit fraught
     pub fn metadata(self, relation: &'static str, v: DDValue) {
         // collect completions
-        tokio::spawn(async move {
-            output_json(&(Batch::singleton(relation, &v).expect("bad metadata relation"))).await
-        });
+        let tm = self.clone();
+        if let Some(m) = &tm.t.lock().expect("lock").management {
+            // we kind of dont want to bootstrap an absolute management nid, do we?
+            m.send(
+                0,
+                Batch::singleton(relation, &v).expect("bad metadata relation"),
+            )
+            .expect("management send failed");
+        };
     }
 }
 
 impl TransactionManager {
     fn start() {}
 
-    // pass network dyn. build a router network.
     pub fn new() -> TransactionManager {
         let (hddlog, _init_output) = HDDlog::run(1, false)
             .unwrap_or_else(|err| panic!("Failed to run differential datalog: {}", err));
         let uuid = u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>());
         TransactionManager {
-            n: None,   // fix
-            h: hddlog, // arc?
+            network: None,     // fix recrusive reference
+            management: None,  // fix recrusive reference
+            evaluator: hddlog, // arc?
             // if we care about locating persistent data on this node across reboots,
             // this uuid will have to be stable. not sure if belongs in TM
             me: uuid,

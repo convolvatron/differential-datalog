@@ -51,7 +51,6 @@ fn main() {
     }
     .parse_or_exit();
 
-    // blocking
     start_children(
         args.nodes,
         match matrix(vec![vec![1, 2, 3], vec![7, 12, 19], vec![5, 3, 1]]) {
@@ -62,4 +61,5 @@ fn main() {
             }
         },
     )
+    .expect("start children failed");
 }
