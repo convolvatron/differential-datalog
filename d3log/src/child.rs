@@ -51,19 +51,8 @@ async fn read_output(t: ArcTransactionManager, f: Box<Fd>) -> Result<(), std::io
         let res = pin.read(&mut buffer).await?;
         for i in jf.append(&buffer[0..res])? {
             let v: Batch = serde_json::from_str(&i)?;
-            println!("eval{}", v);
-            match t.clone().eval(v).await {
-                Ok(b) => {
-                    // println!("eval completez {}", b);
-                    // shouldn't exit on eval error
-                    t.forward(b).await?; // not really dude
-                }
-
-                Err(x) => {
-                    println!("erraru rivalu!");
-                    return Err(Error::new(ErrorKind::Other, x));
-                }
-            };
+            // shouldn't exit on eval error
+            t.forward(t.clone().eval(v)?)?
         }
     }
 }

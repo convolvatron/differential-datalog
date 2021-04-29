@@ -10,10 +10,12 @@ use differential_datalog::{
 use mm_ddlog::api::HDDlog;
 use mm_ddlog::typedefs::d3::Workers;
 use rand::Rng;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex as SyncMutex;
 use std::time::{SystemTime, UNIX_EPOCH};
+use std::io::{Error, ErrorKind};
 
 pub type Timestamp = u64;
 
@@ -75,13 +77,12 @@ impl ArcTransactionManager {
         (*self.t.lock().expect("lock")).me
     }
 
-    pub async fn forward<'a>(&self, input: Batch) -> Result<(), std::io::Error> {
+    pub fn forward(&self, input: Batch) -> Result<(), std::io::Error> {
         let mut output = HashMap::<Node, Box<Batch>>::new();
 
         for (rel, v, weight) in input {
             let tma = &*self.t.lock().expect("lock");
-            // we dont really need an instance here, do we? - i guess the state comes from
-            // prog. we certainly dont need a lock on tm
+
             match tma.evaluator.d3log_localize_val(rel, v.clone()) {
                 Ok((loc_id, in_rel, inner_val)) => {
                     // if loc_id is null, we aren't to forward
@@ -107,7 +108,7 @@ impl ArcTransactionManager {
         Ok(())
     }
 
-    pub async fn eval(self, input: Batch) -> Result<Batch, String> {
+    pub fn eval(self, input: Batch) -> Result<Batch, std::io::Error> {
         let tm = self.t.lock().expect("lock");
         let h = &(*tm).evaluator;
 
@@ -116,14 +117,17 @@ impl ArcTransactionManager {
         for (relid, v, _) in input {
             upd.push(Update::Insert { relid, v });
         }
-        h.transaction_start()?;
-        match h.apply_updates(&mut upd.clone().drain(..)) {
-            Ok(()) => Ok(Batch::from(h.transaction_commit_dump_changes()?)),
-            Err(err) => {
-                println!("Failed to update differential datalog: {}", err);
-                Err(err)
-            }
-        }
+
+        // wrapper to translate hddlog's string error to our standard-by-default std::io::Error
+        match (||->Result<Batch,String>{
+            h.transaction_start()?;
+            h.apply_updates(&mut upd.clone().drain(..))?;
+            Ok(Batch::from(h.transaction_commit_dump_changes()?))
+        })() {
+            Ok(x)=>Ok(x),
+            Err(e)=> return Err(Error::new(ErrorKind::Other,
+                                           format!("Failed to update differential datalog: {}", e)))
+        }            
     }
 
     // its not so much that this belongs in TransactionManager, but that
