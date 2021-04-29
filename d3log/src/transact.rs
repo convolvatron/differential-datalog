@@ -1,11 +1,7 @@
 // general module for managing transactions into and out of ddlog
 
 use crate::tcp_network::ArcTcpNetwork;
-use crate::{
-    batch::{singleton, Batch},
-    child::output_json,
-    Node, Transport,
-};
+use crate::{batch::Batch, child::output_json, Node, Transport};
 use differential_datalog::{
     ddval::{DDValConvert, DDValue},
     program::Update,
@@ -58,7 +54,7 @@ impl ArcTransactionManager {
         };
 
         // fix network and tm mutual reference
-        tm.clone().t.lock().expect("lock").n = Some(Box::new(ArcTcpNetwork::new(tm.clone())));
+        tm.t.lock().expect("lock").n = Some(Box::new(ArcTcpNetwork::new(tm.clone())));
 
         // race between this and tcp network
 
@@ -146,7 +142,7 @@ impl ArcTransactionManager {
     pub fn metadata(self, relation: &'static str, v: DDValue) {
         // collect completions
         tokio::spawn(async move {
-            output_json(&(singleton(relation, &v).expect("bad metadata relation"))).await
+            output_json(&(Batch::singleton(relation, &v).expect("bad metadata relation"))).await
         });
     }
 }

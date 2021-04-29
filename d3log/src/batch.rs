@@ -17,7 +17,7 @@ use std::io::{Error, ErrorKind};
 // #[derive(Serialize, Deserialize)] - deltamap isn't serialize
 pub struct Batch {
     timestamp: u64,
-    pub b: DeltaMap<differential_datalog::ddval::DDValue>,
+    pub deltas: DeltaMap<differential_datalog::ddval::DDValue>,
 }
 
 impl Serialize for Batch {
@@ -31,7 +31,7 @@ impl Serialize for Batch {
         let mut tup = serializer.serialize_tuple(3)?; //maybe map at the top level is better
         let mut updates = Vec::new();
         // use the batch iterator
-        for (relid, vees) in self.b.clone() {
+        for (relid, vees) in self.deltas.clone() {
             for (v, _) in vees {
                 updates.push(UpdateSerializer::from(Update::Insert {
                     relid,
@@ -61,19 +61,19 @@ impl<'de> Visitor<'de> for BatchVisitor {
     {
         let mut b = Batch::new();
 
-        let t: Option<u64> = e.next_element()?;
-        match t {
-            Some(t) => b.timestamp = t,
+        let timestamp: Option<u64> = e.next_element()?;
+        match timestamp {
+            Some(timestamp) => b.timestamp = timestamp,
             None => return Err(de::Error::custom("expected integer timestamp")),
         }
 
-        let k: Option<Vec<UpdateSerializer>> = e.next_element()?;
-        match k {
-            Some(x) => {
-                for i in x {
+        let updates: Option<Vec<UpdateSerializer>> = e.next_element()?;
+        match updates {
+            Some(updates) => {
+                for i in updates {
                     let u = Update::<DDValue>::from(i);
                     match u {
-                        Update::Insert { relid, v } => b.b.update(relid, &v, 1),
+                        Update::Insert { relid, v } => b.deltas.update(relid, &v, 1),
                         _ => return Err(de::Error::custom("invalid value")),
                     }
                 }
@@ -98,7 +98,7 @@ impl<'de> Deserialize<'de> for Batch {
 impl Display for Batch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&format!("<{}", self.timestamp))?;
-        for (relid, vees) in self.b.clone() {
+        for (relid, vees) in self.deltas.clone() {
             f.write_str(&format!("({}", relid2name(relid).expect("relation")))?; // name
             let mut m = 0;
             for (_v, _) in vees {
@@ -148,45 +148,48 @@ impl IntoIterator for Batch {
     fn into_iter(self) -> BatchIterator {
         BatchIterator {
             relid: 0,
-            relations: Box::new(self.b.into_iter()),
+            relations: Box::new(self.deltas.into_iter()),
             items: None,
         }
     }
 }
 
 impl Batch {
-    pub fn from(b: DeltaMap<differential_datalog::ddval::DDValue>) -> Batch {
-        Batch { b, timestamp: 0 }
-    }
-
-    pub fn new() -> Batch {
+    pub fn from(deltas: DeltaMap<differential_datalog::ddval::DDValue>) -> Batch {
         Batch {
-            b: DeltaMap::<differential_datalog::ddval::DDValue>::new(),
+            deltas,
             timestamp: 0,
         }
     }
 
-    pub fn insert(&mut self, r: RelId, v: differential_datalog::ddval::DDValue, weight: u32) {
-        self.b.update(r, &v, weight as isize);
-    }
-}
-
-// make associated
-pub fn singleton(
-    rel: &str,
-    v: &differential_datalog::ddval::DDValue,
-) -> Result<Batch, std::io::Error> {
-    let mrel = match Relations::try_from(rel) {
-        Ok(x) => x as usize,
-        Err(_x) => {
-            return Err(Error::new(
-                ErrorKind::Other,
-                format!("bad relation {}", rel),
-            ))
+    pub fn new() -> Batch {
+        Batch {
+            deltas: DeltaMap::<differential_datalog::ddval::DDValue>::new(),
+            timestamp: 0,
         }
-    };
+    }
 
-    let mut d = Batch::new();
-    d.insert(mrel, v.clone(), 1);
-    Ok(d)
+    // should this return batch to allow for chaining? is that a thing?
+    pub fn insert(&mut self, r: RelId, v: differential_datalog::ddval::DDValue, weight: u32) {
+        self.deltas.update(r, &v, weight as isize);
+    }
+
+    pub fn singleton(
+        rel: &str,
+        v: &differential_datalog::ddval::DDValue,
+    ) -> Result<Batch, std::io::Error> {
+        let mrel = match Relations::try_from(rel) {
+            Ok(x) => x as usize,
+            Err(_x) => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!("bad relation {}", rel),
+                ))
+            }
+        };
+
+        let mut b = Batch::new();
+        b.insert(mrel, v.clone(), 1);
+        Ok(b)
+    }
 }

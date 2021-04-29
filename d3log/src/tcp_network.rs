@@ -26,6 +26,7 @@ use std::sync::Mutex as SyncMutex;
 
 #[derive(Clone)]
 pub struct TcpNetwork {
+    // The double-synchronization here is fairly suspect to me
     peers: Arc<Mutex<HashMap<Node, Arc<Mutex<TcpStream>>>>>,
     sends: Arc<SyncMutex<Vec<JoinHandle<Result<(), std::io::Error>>>>>, // ;JoinHandle<()>>>>,
     tm: ArcTransactionManager,
@@ -96,7 +97,7 @@ impl ArcTcpNetwork {
                                     Ok(x) => x,
                                     Err(x) => panic!(x),
                                 };
-                                println!("{}", v);
+                                println!("receive {}", v);
                             }
                         }
                         Err(x) => panic!("read error {}", x),

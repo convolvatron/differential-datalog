@@ -134,6 +134,10 @@ pub fn make_child() -> Result<(Fd, Fd), nix::Error> {
 // i would kind of prefer to kick off init from inside ddlog, but
 // odaat
 
+//Shouldn't this function return a Result that tells you whether or
+// not it succeeded in starting all children? If so that'd make some
+// of the inner logic a lot cleaner
+
 pub fn start_children(n: usize, _init: Batch) {
     let mut children_in = Vec::<Fd>::new();
     let mut children_out = Vec::<Fd>::new();
