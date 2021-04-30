@@ -91,7 +91,6 @@ impl ArcTransactionManager {
 
         for (nid, b) in output.drain() {
             let tma = &*self.t.lock().expect("lock");
-            // fix tm network mutual reference
             if let Some(n) = &tma.network {
                 n.send(nid, *b)
             }
@@ -103,7 +102,6 @@ impl ArcTransactionManager {
         let tm = self.t.lock().expect("lock");
         let h = &(*tm).evaluator;
 
-        println!("eval {}", input);
         let mut upd = Vec::new();
         for (relid, v, _) in input {
             upd.push(Update::Insert { relid, v });
@@ -132,6 +130,11 @@ impl ArcTransactionManager {
             .query_index(tma.evaluator.get_index_id(&index_name)?, key)?;
         // insert method on batch please
         Ok(results.into_iter().next())
+    }
+
+    // to be deleted
+    pub fn set_network(self, p: Port) {
+        self.t.lock().unwrap().network = Some(p);
     }
 }
 
