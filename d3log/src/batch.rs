@@ -110,7 +110,7 @@ impl Display for Batch {
             }
             f.write_str(&format!(" {})", m))?;
         }
-        f.write_str(&format!(">"))?;
+        f.write_str(&">")?;
         Ok(())
     }
 }
@@ -155,6 +155,13 @@ impl IntoIterator for Batch {
             relations: Box::new(self.deltas.into_iter()),
             items: None,
         }
+    }
+}
+
+// clippy says
+impl Default for Batch {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

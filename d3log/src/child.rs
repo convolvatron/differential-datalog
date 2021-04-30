@@ -41,7 +41,6 @@ impl Transport for FileDescriptor {
             Ok(x) => x,
             Err(x) => panic!("encoding error {}", x),
         };
-        println!("management {}", js);
         let mut pin = AsyncFd::try_from(self.output).expect("asynch");
         tokio::spawn(async move { pin.write_all(js.as_bytes()).await });
     }
@@ -59,7 +58,6 @@ async fn read_output(t: ArcTransactionManager, f: Box<Fd>) -> Result<(), std::io
     let mut buffer = [0; 64];
     loop {
         let res = pin.read(&mut buffer).await?;
-        println!("read {}", std::str::from_utf8(&buffer[0..res]).expect(""));
         for i in jf.append(&buffer[0..res])? {
             let v: Batch = serde_json::from_str(&i)?;
             // shouldn't exit on eval error

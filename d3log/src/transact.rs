@@ -79,11 +79,10 @@ impl ArcTransactionManager {
                 Ok((loc_id, in_rel, inner_val)) => {
                     // if loc_id is null, we aren't to forward
                     if let Some(loc) = loc_id {
-                        output.entry(loc).or_insert(Box::new(Batch::new())).insert(
-                            in_rel,
-                            inner_val,
-                            weight as u32,
-                        )
+                        output
+                            .entry(loc)
+                            .or_insert_with(|| Box::new(Batch::new()))
+                            .insert(in_rel, inner_val, weight as u32)
                     }
                 }
                 Err(val) => println!("{} {:+}", val, weight),
@@ -104,7 +103,7 @@ impl ArcTransactionManager {
         let tm = self.t.lock().expect("lock");
         let h = &(*tm).evaluator;
 
-        // kinda harsh that we feed ddlog updates and get out a deltamap
+        println!("eval {}", input);
         let mut upd = Vec::new();
         for (relid, v, _) in input {
             upd.push(Update::Insert { relid, v });
@@ -117,12 +116,10 @@ impl ArcTransactionManager {
             Ok(Batch::from(h.transaction_commit_dump_changes()?))
         })() {
             Ok(x) => Ok(x),
-            Err(e) => {
-                return Err(Error::new(
-                    ErrorKind::Other,
-                    format!("Failed to update differential datalog: {}", e),
-                ))
-            }
+            Err(e) => Err(Error::new(
+                ErrorKind::Other,
+                format!("Failed to update differential datalog: {}", e),
+            )),
         }
     }
 
@@ -134,12 +131,7 @@ impl ArcTransactionManager {
             .evaluator
             .query_index(tma.evaluator.get_index_id(&index_name)?, key)?;
         // insert method on batch please
-        Ok((|| {
-            for x in results {
-                return Some(x);
-            }
-            None
-        })())
+        Ok(results.into_iter().next())
     }
 }
 

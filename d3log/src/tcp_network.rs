@@ -155,7 +155,7 @@ impl Transport for ArcTcpNetwork {
             let target_string = tuple.destination.to_string();
             let target: SocketAddr = target_string
                 .parse()
-                .expect(&format!("bad tcp address {}", target_string));
+                .unwrap_or_else(|_| panic!("bad tcp address {}", target_string));
 
             // this is racy because we keep having to drop this lock across
             // await. if we lose, there will be a once used but after idle
