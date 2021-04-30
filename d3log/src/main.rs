@@ -15,7 +15,7 @@ use std::str;
 
 type Node = D3logLocationId;
 
-trait Transport {
+pub trait Transport {
     fn send(&self, nid: Node, b: Batch) -> Result<(), std::io::Error>;
 }
 

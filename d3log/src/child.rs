@@ -76,9 +76,8 @@ pub fn start_node(f: Vec<Fd>) {
     });
 
     let am = Arc::new(m);
-
     let tm = ArcTransactionManager::new(uuid, am.clone());
-    let tn = Box::new(ArcTcpNetwork::new(uuid, am.clone(), tm));
+    let tn = Box::new(ArcTcpNetwork::new(uuid, am.clone(), tm.clone()));
     // bind network to tm
 
     rt.block_on(async move {

@@ -22,7 +22,7 @@ pub struct TransactionManager {
     // which causes this small mess
     network: Option<Port>,
 
-    management: Port,
+    management: Arc<Port>,
     evaluator: HDDlog,
     me: Node,
 }
@@ -47,9 +47,12 @@ pub struct ArcTransactionManager {
 }
 
 impl ArcTransactionManager {
-    pub fn new(uuid: Node, management: Port) -> ArcTransactionManager {
+    pub fn new(uuid: Node, management: Arc<Port>) -> ArcTransactionManager {
         let tm = ArcTransactionManager {
-            t: Arc::new(SyncMutex::new(TransactionManager::new(uuid, management))),
+            t: Arc::new(SyncMutex::new(TransactionManager::new(
+                uuid,
+                management.clone(),
+            ))),
         };
 
         management.send(
@@ -141,7 +144,7 @@ impl ArcTransactionManager {
 impl TransactionManager {
     fn start() {}
 
-    pub fn new(me: Node, management: Port) -> TransactionManager {
+    pub fn new(me: Node, management: Arc<Port>) -> TransactionManager {
         let (hddlog, _init_output) = HDDlog::run(1, false)
             .unwrap_or_else(|err| panic!("Failed to run differential datalog: {}", err));
 

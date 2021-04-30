@@ -42,12 +42,12 @@ pub struct ArcTcpNetwork {
 }
 
 impl ArcTcpNetwork {
-    pub fn new(me: Node, management: Port, tm: ArcTransactionManager) -> ArcTcpNetwork {
+    pub fn new(me: Node, management: Arc<Port>, tm: ArcTransactionManager) -> ArcTcpNetwork {
         ArcTcpNetwork {
             n: Arc::new(SyncMutex::new(TcpNetwork {
                 peers: Arc::new(Mutex::new(HashMap::new())),
                 sends: Arc::new(SyncMutex::new(Vec::new())),
-                management: Arc::new(management),
+                management,
                 me,
                 tm,
             })),
