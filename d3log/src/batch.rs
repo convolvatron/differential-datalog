@@ -1,3 +1,7 @@
+// a module to support a set of updates and provide some convencience functions
+// over them, in particular general serde support. This currently sits on top
+// of DeltaMap, but that might change
+
 use differential_datalog::{ddval::DDValue, program::RelId, program::Update, DeltaMap};
 
 // not really, we aren't going to be compiling against the user program

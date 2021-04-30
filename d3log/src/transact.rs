@@ -1,4 +1,6 @@
-// general module for managing transactions into and out of ddlog
+// general module for managing transactions into and out of ddlog. currently
+// this means just feeding batches and splitting them up for distribution - but
+// single-value-serialization/progress would go here
 
 use crate::{batch::Batch, Node, Port};
 use differential_datalog::{

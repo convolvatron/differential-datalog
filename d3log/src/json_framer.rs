@@ -1,3 +1,15 @@
+// this module pre-frames json objects out of an arbitrarily chunked byte string.
+// it is a really terrible idea to temporarily work around some limtations
+// with serde. specifically that it can read chunked blocks and a sequence
+// of self-framed json objects, but not both
+//
+// haven't been able to understand it yet but
+// https://github.com/TimelyDataflow/timely-dataflow/blob/master/timely/src/dataflow/operators/to_stream.rs#L73
+// may lead to a better answer.
+//
+// if it were going to stay Lexement should really just be the leading group
+// character
+
 use phf::{phf_map, phf_set};
 use std::io::{Error, ErrorKind};
 

@@ -1,3 +1,5 @@
+// temporary main that runs the trivial matrix multiply example. this
+// will instead turn into supervisor main
 mod batch;
 mod child;
 mod json_framer;

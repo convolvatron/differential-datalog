@@ -1,3 +1,10 @@
+// functions for managing forked children.
+// - start_node(), which is the general d3log runtime start, and probably doesn't belong here
+// - implementation of Port over pipes
+//
+// this needs to get broken apart or shifted a little since the children in the future
+// will be other ddlog executables
+
 use crate::{
     json_framer::JsonFramer, tcp_network::ArcTcpNetwork, transact::ArcTransactionManager, Batch,
     Node, Port, Transport,
