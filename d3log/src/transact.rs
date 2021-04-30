@@ -18,7 +18,10 @@ use std::time::{SystemTime, UNIX_EPOCH};
 pub type Timestamp = u64;
 
 pub struct TransactionManager {
-    network: Port,
+    // network uses a transaction manger for queries,
+    // which causes this small mess
+    network: Option<Port>,
+
     management: Port,
     evaluator: HDDlog,
     me: Node,
@@ -44,20 +47,15 @@ pub struct ArcTransactionManager {
 }
 
 impl ArcTransactionManager {
-    pub fn new(uuid: Node, network: Port, management: Port) -> ArcTransactionManager {
+    pub fn new(uuid: Node, management: Port) -> ArcTransactionManager {
         let tm = ArcTransactionManager {
-            t: Arc::new(SyncMutex::new(TransactionManager::new(
-                uuid, network, management,
-            ))),
+            t: Arc::new(SyncMutex::new(TransactionManager::new(uuid, management))),
         };
-        // race between this and tcp network
 
-        tm.clone().metadata(
-            "d3::Workers",
-            Workers {
-                location: tm.myself(),
-            }
-            .into_ddvalue(),
+        management.send(
+            0,
+            Batch::singleton("d3::Workers", &Workers { location: uuid }.into_ddvalue())
+                .expect("workers"),
         );
         tm
     }
@@ -138,32 +136,17 @@ impl ArcTransactionManager {
             None
         })())
     }
-
-    // this is kind of just a convenience function, but the plumbing around this
-    // is a bit fraught
-    pub fn metadata(self, relation: &'static str, v: DDValue) {
-        // collect completions
-        let tm = self.clone();
-        if let Some(m) = &tm.t.lock().expect("lock").management {
-            // we kind of dont want to bootstrap an absolute management nid, do we?
-            m.send(
-                0,
-                Batch::singleton(relation, &v).expect("bad metadata relation"),
-            )
-            .expect("management send failed");
-        };
-    }
 }
 
 impl TransactionManager {
     fn start() {}
 
-    pub fn new(me: Node, network: Port, management: Port) -> TransactionManager {
+    pub fn new(me: Node, management: Port) -> TransactionManager {
         let (hddlog, _init_output) = HDDlog::run(1, false)
             .unwrap_or_else(|err| panic!("Failed to run differential datalog: {}", err));
 
         TransactionManager {
-            network,
+            network: None,
             management,
             evaluator: hddlog,
             me,

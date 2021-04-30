@@ -15,7 +15,9 @@ use tokio::{
 
 use mm_ddlog::typedefs::d3::{Connection, TcpAddress};
 
-use crate::{json_framer::JsonFramer, Batch, Node, Port, Transport};
+use crate::{
+    json_framer::JsonFramer, transact::ArcTransactionManager, Batch, Node, Port, Transport,
+};
 
 use differential_datalog::ddval::DDValConvert;
 
@@ -29,8 +31,9 @@ pub struct TcpNetwork {
     // The double-synchronization here is fairly suspect to me
     peers: Arc<Mutex<HashMap<Node, Arc<Mutex<TcpStream>>>>>,
     sends: Arc<SyncMutex<Vec<JoinHandle<Result<(), std::io::Error>>>>>, // ;JoinHandle<()>>>>,
-    management: Port,
+    management: Arc<Port>, // arc because send, sync, and clone aren't compatible traits. box doesn't support clone
     me: Node,
+    tm: ArcTransactionManager,
 }
 
 #[derive(Clone)]
@@ -39,13 +42,14 @@ pub struct ArcTcpNetwork {
 }
 
 impl ArcTcpNetwork {
-    pub fn new(me: Node, management: Port) -> ArcTcpNetwork {
+    pub fn new(me: Node, management: Port, tm: ArcTransactionManager) -> ArcTcpNetwork {
         ArcTcpNetwork {
             n: Arc::new(SyncMutex::new(TcpNetwork {
                 peers: Arc::new(Mutex::new(HashMap::new())),
                 sends: Arc::new(SyncMutex::new(Vec::new())),
-                management,
+                management: Arc::new(management),
                 me,
+                tm,
             })),
         }
     }
@@ -133,7 +137,6 @@ impl Transport for ArcTcpNetwork {
             let tm = &mut (*self.n.lock().expect("lock")).tm;
             tm.clone()
         };
-
         let completion = tokio::spawn(async move {
             // sync lock in async context? - https://tokio.rs/tokio/tutorial/shared-state
             // says its ok. otherwise this gets pretty hard. it does steal a tokio thread

@@ -3,6 +3,7 @@ use crate::{
     Node, Port, Transport,
 };
 
+use std::sync::Arc;
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, runtime::Runtime, spawn};
 use tokio_fd::AsyncFd;
 
@@ -20,6 +21,7 @@ const CHILD_OUTPUT_FD: Fd = 4;
 // really we probably want to have a forwarding table
 // xxx child read input
 
+#[derive(Clone)]
 struct FileDescriptor {
     input: Fd,
     output: Fd,
@@ -68,12 +70,16 @@ pub fn start_node(f: Vec<Fd>) {
 
     // this should be allocated from outside, primary has this
     // routed to a broadcast (and inputs should be routed to that broadcast)
-    let m: Port = Box::new(&FileDescriptor {
+    let m: Port = Box::new(FileDescriptor {
         input: CHILD_INPUT_FD,
         output: CHILD_OUTPUT_FD,
     });
-    let tn = Box::new(&ArcTcpNetwork::new(uuid, m));
-    let tm = ArcTransactionManager::new(uuid, tn, m);
+
+    let am = Arc::new(m);
+
+    let tm = ArcTransactionManager::new(uuid, am.clone());
+    let tn = Box::new(ArcTcpNetwork::new(uuid, am.clone(), tm));
+    // bind network to tm
 
     rt.block_on(async move {
         for i in f {
