@@ -128,7 +128,7 @@ impl ArcTcpNetwork {
 // should this be one instance per transport type, or one per peer - seems
 // like the latter really
 impl Transport for ArcTcpNetwork {
-    fn send(&self, nid: Node, b: Batch) -> Result<(), std::io::Error> {
+    fn send(&self, nid: Node, b: Batch) {
         let peers = {
             let peers = &mut (*self.n.lock().expect("lock")).peers;
             peers.clone()
@@ -182,6 +182,5 @@ impl Transport for ArcTcpNetwork {
             }
         });
         (*self.n.lock().expect("lock").sends.lock().expect("lock")).push(completion);
-        Ok(())
     }
 }

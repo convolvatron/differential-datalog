@@ -92,7 +92,7 @@ impl ArcTransactionManager {
             let tma = &*self.t.lock().expect("lock");
             // fix tm network mutual reference
             if let Some(n) = &tma.network {
-                n.send(nid, *b)?
+                n.send(nid, *b)
             }
         }
         Ok(())

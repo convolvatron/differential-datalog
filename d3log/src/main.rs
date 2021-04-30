@@ -16,7 +16,10 @@ use std::str;
 type Node = D3logLocationId;
 
 pub trait Transport {
-    fn send(&self, nid: Node, b: Batch) -> Result<(), std::io::Error>;
+    // since most of these errors are async, we're adopting a general
+    // policy for the moment of making all errors async and reported out
+    // of band
+    fn send(&self, nid: Node, b: Batch);
 }
 
 type Port = Box<(dyn Transport + Send + Sync)>;

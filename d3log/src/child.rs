@@ -28,15 +28,15 @@ struct FileDescriptor {
 }
 
 impl Transport for FileDescriptor {
-    fn send(&self, _nid: Node, b: Batch) -> Result<(), std::io::Error> {
+    fn send(&self, _nid: Node, b: Batch) {
         // there doesn't seem to be a nice unwrap for error rewriting - i guess a macro
         let js = match serde_json::to_string(&b) {
             Ok(x) => x,
-            Err(_x) => return Err(Error::new(ErrorKind::Other, "oh no!")),
+            Err(x) => panic!("encoding error {}", x),
         };
-        let mut pin = AsyncFd::try_from(self.output)?;
+        println!("management {}", js);
+        let mut pin = AsyncFd::try_from(self.output).expect("asynch");
         tokio::spawn(async move { pin.write_all(js.as_bytes()).await });
-        Ok(())
     }
 }
 
@@ -52,6 +52,7 @@ async fn read_output(t: ArcTransactionManager, f: Box<Fd>) -> Result<(), std::io
     let mut buffer = [0; 64];
     loop {
         let res = pin.read(&mut buffer).await?;
+        println!("read {}", std::str::from_utf8(&buffer[0..res]).expect(""));
         for i in jf.append(&buffer[0..res])? {
             let v: Batch = serde_json::from_str(&i)?;
             // shouldn't exit on eval error
@@ -80,6 +81,7 @@ pub fn start_node(f: Vec<Fd>) {
     let tn = Box::new(ArcTcpNetwork::new(uuid, am.clone(), tm.clone()));
     // bind network to tm
 
+    println!("start");
     rt.block_on(async move {
         for i in f {
             let tmclone = tm.clone();
