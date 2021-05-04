@@ -76,14 +76,14 @@ pub fn start_node(f: Vec<Fd>) {
 
     // this should be allocated from outside, primary has this
     // routed to a broadcast (and inputs should be routed to that broadcast)
-    let m: Port = Box::new(FileDescriptor {
+    let m: Port = Arc::new(FileDescriptor {
         input: CHILD_INPUT_FD,
         output: CHILD_OUTPUT_FD,
     });
 
     let am = Arc::new(m);
     let tm = ArcTransactionManager::new(uuid, am.clone());
-    let tn = Box::new(ArcTcpNetwork::new(uuid, am.clone(), tm.clone()));
+    let tn = Arc::new(ArcTcpNetwork::new(uuid, am.clone(), tm.clone()));
     tm.clone().set_network(tn.clone());
     println!("start");
     rt.block_on(async move {

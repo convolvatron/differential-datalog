@@ -1,21 +1,24 @@
 // temporary main that runs the trivial matrix multiply example. this
-// will instead turn into supervisor main
+// will become supervisor main
+
 mod batch;
 mod child;
+mod dispatch;
 mod json_framer;
 mod tcp_network;
 mod transact;
 
 use crate::{batch::Batch, child::start_children, typedefs::matrix::Matrix};
-
 use differential_datalog::ddval::DDValConvert;
 use differential_datalog::D3logLocationId;
+use std::sync::Arc;
 
 use mm_ddlog::*;
 use rustop::opts;
 use std::str;
 
 type Node = D3logLocationId;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub trait Transport {
     // since most of these errors are async, we're adopting a general
@@ -24,7 +27,18 @@ pub trait Transport {
     fn send(&self, nid: Node, b: Batch);
 }
 
-type Port = Box<(dyn Transport + Send + Sync)>;
+// doesn't belong in main. but we'd like a monotonic wallclock
+// to sequence system events. Also - it would be nice if ddlog
+// had some basic time functions (format)
+
+fn now() -> u64 {
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_millis() as u64
+}
+
+type Port = Arc<(dyn Transport + Send + Sync)>;
 
 use std::convert::TryFrom;
 fn matrix(mat: Vec<Vec<u64>>) -> Result<Batch, String> {

@@ -181,8 +181,8 @@ impl Batch {
     }
 
     // should this return batch to allow for chaining? is that a thing?
-    pub fn insert(&mut self, r: RelId, v: differential_datalog::ddval::DDValue, weight: u32) {
-        self.deltas.update(r, &v, weight as isize);
+    pub fn insert(&mut self, r: RelId, v: differential_datalog::ddval::DDValue, weight: isize) {
+        self.deltas.update(r, &v, weight);
     }
 
     pub fn singleton(

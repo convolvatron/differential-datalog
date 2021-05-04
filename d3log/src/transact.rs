@@ -69,6 +69,7 @@ impl ArcTransactionManager {
         (*self.t.lock().expect("lock")).me
     }
 
+    // this should be Port when we get our story straight
     pub fn forward(&self, input: Batch) -> Result<(), std::io::Error> {
         let mut output = HashMap::<Node, Box<Batch>>::new();
 
@@ -82,7 +83,7 @@ impl ArcTransactionManager {
                         output
                             .entry(loc)
                             .or_insert_with(|| Box::new(Batch::new()))
-                            .insert(in_rel, inner_val, weight as u32)
+                            .insert(in_rel, inner_val, weight)
                     }
                 }
                 Err(val) => println!("{} {:+}", val, weight),

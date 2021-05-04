@@ -13,10 +13,10 @@ use tokio::{
     task::JoinHandle,
 };
 
-use mm_ddlog::typedefs::d3::{Connection, TcpAddress};
+use mm_ddlog::typedefs::d3::{ConnectionStatus, TcpAddress};
 
 use crate::{
-    json_framer::JsonFramer, transact::ArcTransactionManager, Batch, Node, Port, Transport,
+    json_framer::JsonFramer, now, transact::ArcTransactionManager, Batch, Node, Port, Transport,
 };
 
 use differential_datalog::ddval::DDValConvert;
@@ -85,8 +85,9 @@ impl ArcTcpNetwork {
                 tn.management.send(
                     0,
                     Batch::singleton(
-                        "d3::Connection",
-                        &Connection {
+                        "d3::ConnectionStatus",
+                        &ConnectionStatus {
+                            time: now(),
                             me: tn.me,
                             them: tn.me,
                         }
@@ -176,9 +177,7 @@ impl Transport for ArcTcpNetwork {
             {
                 Ok(_) => Ok(()),
                 // these need to get directed to a retry machine and an async reporting relation
-                Err(x) => {
-                    panic!("send error {}", x);
-                }
+                Err(x) => panic!("send error {}", x),
             }
         });
         (*self.n.lock().expect("lock").sends.lock().expect("lock")).push(completion);
