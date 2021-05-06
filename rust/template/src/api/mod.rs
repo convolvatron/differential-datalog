@@ -244,7 +244,12 @@ impl DDlogProfiling for HDDlog {
     fn profile(&self) -> Result<String, String> {
         self.record_command(|r| r.profile());
         let rprog = self.prog.lock().unwrap();
-        let profile: String = rprog.profile.lock().unwrap().to_string();
+        let profile = rprog
+            .profile
+            .as_ref()
+            .map(|profile| profile.lock().unwrap().to_string())
+            .unwrap_or_else(String::new);
+
         Ok(profile)
     }
 }
@@ -497,7 +502,7 @@ impl HDDlog {
         ))
     }
 
-    fn db_dump_table<F>(db: &mut DeltaMap<DDValue>, table: libc::size_t, cb: Option<F>)
+    fn db_dump_table<F>(db: &mut DeltaMap<DDValue>, table: usize, cb: Option<F>)
     where
         F: Fn(&record::Record, isize) -> bool,
     {

@@ -4,24 +4,7 @@
 //! These tests live in a separate crate, as they depend on the `types` crate that defines the
 //! `DDValConvert` trait.  Since `types` itself depends on `differential_datalog`, tests had to be
 //! factored in a separate crate.
-
-#![allow(
-    non_snake_case,
-    non_camel_case_types,
-    non_upper_case_globals,
-    dead_code,
-    clippy::unknown_clippy_lints,
-    clippy::blocks_in_if_conditions,
-    clippy::type_complexity,
-    clippy::clone_on_copy,
-    clippy::eq_op,
-    clippy::cmp_owned,
-    clippy::nonminimal_bool,
-    clippy::toplevel_ref_arg,
-    clippy::trivially_copy_pass_by_ref,
-    clippy::unnecessary_wraps,
-    clippy::from_iter_instead_of_collect
-)]
+#![cfg_attr(not(test), allow(dead_code))]
 
 use std::borrow::Cow;
 use std::collections::btree_map::{BTreeMap, Entry};
@@ -108,9 +91,9 @@ where
 #[test]
 fn test_multiple_stops() {
     let prog: Program = Program {
-        nodes: vec![],
-        delayed_rels: vec![],
-        init_data: vec![],
+        nodes: Vec::new(),
+        delayed_rels: Vec::new(),
+        init_data: Vec::new(),
     };
 
     let mut running = prog.run(2).unwrap();
@@ -600,11 +583,10 @@ fn test_join(nthreads: usize) {
         }
     };
 
-    fn join_transformer() -> Box<
-        dyn for<'a> Fn(
-            &mut FnvHashMap<RelId, Collection<Child<'a, Worker<Allocator>, TS>, DDValue, Weight>>,
-        ),
-    > {
+    type CollectionMap<'a> =
+        FnvHashMap<RelId, Collection<Child<'a, Worker<Allocator>, TS>, DDValue, Weight>>;
+
+    fn join_transformer() -> Box<dyn for<'a> Fn(&mut CollectionMap<'a>)> {
         Box::new(|collections| {
             let rel4 = {
                 let rel1 = collections.get(&1).unwrap();
@@ -711,10 +693,6 @@ fn test_streamjoin(nthreads: usize) {
             change_cb: Some(Arc::new(move |_, v, w| set_update("T1", &relset1, v, w))),
         }
     };
-    fn fmfun1(v: DDValue) -> Option<DDValue> {
-        let Tuple2(ref v1, ref _v2) = Tuple2::<U64>::from_ddvalue(v);
-        Some(v1.clone().into_ddvalue())
-    }
 
     fn afun1(v: DDValue) -> Option<(DDValue, DDValue)> {
         let Tuple2(ref v1, ref v2) = Tuple2::<U64>::from_ddvalue(v);
@@ -1116,8 +1094,8 @@ fn test_map(nthreads: usize) {
     };
 
     fn mfun(v: DDValue) -> DDValue {
-        let U64(ref uv) = U64::from_ddvalue_ref(&v);
-        U64(uv.clone() * 2).into_ddvalue()
+        let &U64(uv) = U64::from_ddvalue_ref(&v);
+        U64(uv * 2).into_ddvalue()
     }
 
     fn gfun3(v: DDValue) -> Option<(DDValue, DDValue)> {
@@ -1142,21 +1120,21 @@ fn test_map(nthreads: usize) {
     }
 
     fn fmfun(v: DDValue) -> Option<DDValue> {
-        let U64(uv) = U64::from_ddvalue_ref(&v);
-        if *uv > 12 {
-            Some(U64(uv.clone() * 2).into_ddvalue())
+        let &U64(uv) = U64::from_ddvalue_ref(&v);
+        if uv > 12 {
+            Some(U64(uv * 2).into_ddvalue())
         } else {
             None
         }
     }
 
     fn flatmapfun(v: DDValue) -> Option<Box<dyn Iterator<Item = DDValue>>> {
-        let U64(i) = U64::from_ddvalue_ref(&v);
-        if *i > 12 {
+        let &U64(i) = U64::from_ddvalue_ref(&v);
+        if i > 12 {
             Some(Box::new(
                 vec![
-                    I64(-(*i as i64)).into_ddvalue(),
-                    I64(-(2 * (*i as i64))).into_ddvalue(),
+                    I64(-(i as i64)).into_ddvalue(),
+                    I64(-(2 * (i as i64))).into_ddvalue(),
                 ]
                 .into_iter(),
             ))
@@ -1696,87 +1674,33 @@ fn test_recursion(nthreads: usize) {
         |-->E
     */
     let vals = vec![
-        Tuple2(
-            Box::new(String("A".to_string())),
-            Box::new(String("B".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("B".to_string())),
-            Box::new(String("C".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("B".to_string())),
-            Box::new(String("D".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("A".to_string())),
-            Box::new(String("E".to_string())),
-        ),
+        Tuple2::new(String("A".to_string()), String("B".to_string())),
+        Tuple2::new(String("B".to_string()), String("C".to_string())),
+        Tuple2::new(String("B".to_string()), String("D".to_string())),
+        Tuple2::new(String("A".to_string()), String("E".to_string())),
     ];
     let set = BTreeMap::from_iter(vals.iter().map(|x| (x.clone(), 1)));
 
     let expect_vals = vec![
-        Tuple2(
-            Box::new(String("A".to_string())),
-            Box::new(String("B".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("B".to_string())),
-            Box::new(String("C".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("B".to_string())),
-            Box::new(String("D".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("A".to_string())),
-            Box::new(String("E".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("A".to_string())),
-            Box::new(String("D".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("A".to_string())),
-            Box::new(String("C".to_string())),
-        ),
+        Tuple2::new(String("A".to_string()), String("B".to_string())),
+        Tuple2::new(String("B".to_string()), String("C".to_string())),
+        Tuple2::new(String("B".to_string()), String("D".to_string())),
+        Tuple2::new(String("A".to_string()), String("E".to_string())),
+        Tuple2::new(String("A".to_string()), String("D".to_string())),
+        Tuple2::new(String("A".to_string()), String("C".to_string())),
     ];
 
     let expect_set = BTreeMap::from_iter(expect_vals.iter().map(|x| (x.clone(), 1)));
 
     let expect_vals2 = vec![
-        Tuple2(
-            Box::new(String("C".to_string())),
-            Box::new(String("D".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("D".to_string())),
-            Box::new(String("C".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("C".to_string())),
-            Box::new(String("E".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("E".to_string())),
-            Box::new(String("C".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("D".to_string())),
-            Box::new(String("E".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("E".to_string())),
-            Box::new(String("D".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("E".to_string())),
-            Box::new(String("B".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("B".to_string())),
-            Box::new(String("E".to_string())),
-        ),
+        Tuple2::new(String("C".to_string()), String("D".to_string())),
+        Tuple2::new(String("D".to_string()), String("C".to_string())),
+        Tuple2::new(String("C".to_string()), String("E".to_string())),
+        Tuple2::new(String("E".to_string()), String("C".to_string())),
+        Tuple2::new(String("D".to_string()), String("E".to_string())),
+        Tuple2::new(String("E".to_string()), String("D".to_string())),
+        Tuple2::new(String("E".to_string()), String("B".to_string())),
+        Tuple2::new(String("B".to_string()), String("E".to_string())),
     ];
     let expect_set2 = BTreeMap::from_iter(expect_vals2.iter().map(|x| (x.clone(), 1)));
 
@@ -1799,32 +1723,17 @@ fn test_recursion(nthreads: usize) {
     running.transaction_commit().unwrap();
 
     let expect_vals3 = vec![
-        Tuple2(
-            Box::new(String("B".to_string())),
-            Box::new(String("C".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("B".to_string())),
-            Box::new(String("D".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("A".to_string())),
-            Box::new(String("E".to_string())),
-        ),
+        Tuple2::new(String("B".to_string()), String("C".to_string())),
+        Tuple2::new(String("B".to_string()), String("D".to_string())),
+        Tuple2::new(String("A".to_string()), String("E".to_string())),
     ];
     let expect_set3 = BTreeMap::from_iter(expect_vals3.iter().map(|x| (x.clone(), 1)));
 
     assert_eq!(*ancestorset.lock().unwrap(), expect_set3);
 
     let expect_vals4 = vec![
-        Tuple2(
-            Box::new(String("C".to_string())),
-            Box::new(String("D".to_string())),
-        ),
-        Tuple2(
-            Box::new(String("D".to_string())),
-            Box::new(String("C".to_string())),
-        ),
+        Tuple2::new(String("C".to_string()), String("D".to_string())),
+        Tuple2::new(String("D".to_string()), String("C".to_string())),
     ];
     let expect_set4 = BTreeMap::from_iter(expect_vals4.iter().map(|x| (x.clone(), 1)));
 

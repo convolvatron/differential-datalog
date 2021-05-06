@@ -2,7 +2,7 @@
 
 use crate::{
     ddval::DDValue,
-    program::{ArrId, TKeyAgent, TKeyEnter, TSNested, TValAgent, TValEnter, Weight},
+    program::{ArrId, TKeyAgent, TKeyEnter, TValAgent, TValEnter, Weight},
 };
 use differential_dataflow::{
     difference::{Diff, Monoid},
@@ -12,107 +12,132 @@ use differential_dataflow::{
         arrange::arrangement::{ArrangeBySelf, Arranged},
         Consolidate, JoinCore, Reduce,
     },
-    trace::{BatchReader, Cursor, TraceReader},
+    trace::{wrappers::enter::TraceEnter, BatchReader, Cursor, TraceReader},
     Collection, Data, ExchangeData,
 };
 use fnv::FnvHashMap;
-use num::One;
 use std::ops::{Add, Mul, Neg};
 use timely::{
-    dataflow::scopes::{Child, Scope, ScopeParent},
-    order::Product,
+    dataflow::scopes::{Child, Scope},
     progress::{timestamp::Refines, Timestamp},
 };
 
-pub(super) enum ArrangedCollection<S, T1, T2>
+/// An arrangement originating either in the current scope or a higher one
+#[derive(Clone)]
+pub enum ArrangementFlavor<S, T>
 where
     S: Scope,
-    S::Timestamp: Lattice + Ord,
-    T1: TraceReader<Key = DDValue, Val = DDValue, Time = S::Timestamp, R = Weight> + Clone,
-    T1::Batch: BatchReader<DDValue, DDValue, S::Timestamp, Weight>,
-    T1::Cursor: Cursor<DDValue, DDValue, S::Timestamp, Weight>,
-    T2: TraceReader<Key = DDValue, Val = (), Time = S::Timestamp, R = Weight> + Clone,
-    T2::Batch: BatchReader<DDValue, (), S::Timestamp, Weight>,
-    T2::Cursor: Cursor<DDValue, (), S::Timestamp, Weight>,
+    S::Timestamp: Lattice + Refines<T>,
+    T: Lattice + Timestamp,
 {
-    Map(Arranged<S, T1>),
-    Set(Arranged<S, T2>),
+    /// An arrangement created within the current scope, usually created by
+    /// [`Arrangement::enter_region()`] or made directly from the output of
+    /// [`ArrangeBySelf::arrange_by_self()`] or similar methods
+    Local(Arrangement<S, Weight, TValAgent<S::Timestamp>, TKeyAgent<S::Timestamp>>),
+    /// An arrangement imported from a higher scope, usually created by [`Arrangement::enter()`]
+    Foreign(Arrangement<S, Weight, TValEnter<T, S::Timestamp>, TKeyEnter<T, S::Timestamp>>),
 }
 
-impl<S> ArrangedCollection<S, TValAgent<S>, TKeyAgent<S>>
+/// A single [arrangement](Arranged), either arranged as a map of keys to values or as a set of keys
+#[derive(Clone)]
+pub enum Arrangement<S, R, Map, Set>
+where
+    S: Scope,
+    S::Timestamp: Lattice,
+    Map: TraceReader<Key = DDValue, Val = DDValue, Time = S::Timestamp, R = R> + Clone + 'static,
+    Map::Batch: BatchReader<Map::Key, Map::Val, Map::Time, Map::R> + Clone + 'static,
+    Map::Cursor: Cursor<Map::Key, Map::Val, Map::Time, Map::R>,
+    Set: TraceReader<Key = DDValue, Val = (), Time = S::Timestamp, R = R> + Clone + 'static,
+    Set::Batch: BatchReader<Set::Key, Set::Val, Set::Time, Set::R> + Clone + 'static,
+    Set::Cursor: Cursor<Set::Key, Set::Val, Set::Time, Set::R>,
+{
+    /// An [arrangement](Arranged) of keys to associated values
+    Map(Arranged<S, Map>),
+    /// An [arrangement](Arranged) of keys
+    Set(Arranged<S, Set>),
+}
+
+impl<S, R, Map, Set> Arrangement<S, R, Map, Set>
 where
     S: Scope,
     S::Timestamp: Lattice + Ord,
+    Map: TraceReader<Key = DDValue, Val = DDValue, Time = S::Timestamp, R = R> + Clone + 'static,
+    Map::Batch: BatchReader<Map::Key, Map::Val, Map::Time, Map::R> + Clone + 'static,
+    Map::Cursor: Cursor<Map::Key, Map::Val, Map::Time, Map::R>,
+    Set: TraceReader<Key = DDValue, Val = (), Time = S::Timestamp, R = R> + Clone + 'static,
+    Set::Batch: BatchReader<Set::Key, Set::Val, Set::Time, Set::R> + Clone + 'static,
+    Set::Cursor: Cursor<Set::Key, Set::Val, Set::Time, Set::R>,
 {
-    pub(super) fn enter<'a>(
+    /// Brings an arranged collection out of a nested scope, see [`Arranged::enter()`]
+    pub fn enter<'a, TInner>(
         &self,
-        inner: &Child<'a, S, Product<S::Timestamp, TSNested>>,
-    ) -> ArrangedCollection<
-        Child<'a, S, Product<S::Timestamp, TSNested>>,
-        TValEnter<S, Product<S::Timestamp, TSNested>>,
-        TKeyEnter<S, Product<S::Timestamp, TSNested>>,
-    > {
+        inner: &Child<'a, S, TInner>,
+    ) -> Arrangement<Child<'a, S, TInner>, R, TraceEnter<Map, TInner>, TraceEnter<Set, TInner>>
+    where
+        R: 'static,
+        TInner: Refines<S::Timestamp> + Lattice + Timestamp + Clone + 'static,
+    {
         match self {
-            ArrangedCollection::Map(arr) => ArrangedCollection::Map(arr.enter(inner)),
-            ArrangedCollection::Set(arr) => ArrangedCollection::Set(arr.enter(inner)),
+            Self::Map(arr) => Arrangement::Map(arr.enter(inner)),
+            Self::Set(arr) => Arrangement::Set(arr.enter(inner)),
+        }
+    }
+
+    /// Brings an arranged collection into a nested region, see [`Arranged::enter_region()`]
+    pub fn enter_region<'a>(
+        &self,
+        region: &Child<'a, S, S::Timestamp>,
+    ) -> Arrangement<Child<'a, S, S::Timestamp>, R, Map, Set>
+    where
+        R: 'static,
+    {
+        match self {
+            Self::Map(arr) => Arrangement::Map(arr.enter_region(region)),
+            Self::Set(arr) => Arrangement::Set(arr.enter_region(region)),
         }
     }
 }
 
-/// Helper type that represents an arranged collection of one of two
-/// types (e.g., an arrangement created in a local scope or entered from
-/// the parent scope)
-pub(super) enum A<'a, 'b, P, T>
+impl<'a, S, R, Map, Set> Arrangement<Child<'a, S, S::Timestamp>, R, Map, Set>
 where
-    P: ScopeParent,
-    P::Timestamp: Lattice + Ord,
-    T: Refines<P::Timestamp> + Lattice + Timestamp + Ord,
-    'a: 'b,
+    S: Scope,
+    S::Timestamp: Lattice + Ord,
+    Map: TraceReader<Key = DDValue, Val = DDValue, Time = S::Timestamp, R = R> + Clone + 'static,
+    Map::Batch: BatchReader<Map::Key, Map::Val, Map::Time, Map::R> + Clone + 'static,
+    Map::Cursor: Cursor<Map::Key, Map::Val, Map::Time, Map::R>,
+    Set: TraceReader<Key = DDValue, Val = (), Time = S::Timestamp, R = R> + Clone + 'static,
+    Set::Batch: BatchReader<Set::Key, Set::Val, Set::Time, Set::R> + Clone + 'static,
+    Set::Cursor: Cursor<Set::Key, Set::Val, Set::Time, Set::R>,
 {
-    Arrangement1(
-        &'b ArrangedCollection<
-            Child<'a, P, T>,
-            TValAgent<Child<'a, P, T>>,
-            TKeyAgent<Child<'a, P, T>>,
-        >,
-    ),
-    Arrangement2(&'b ArrangedCollection<Child<'a, P, T>, TValEnter<'a, P, T>, TKeyEnter<'a, P, T>>),
+    /// Brings an arranged collection out of a nested region, see [`Arranged::leave_region()`]
+    pub fn leave_region(&self) -> Arrangement<S, R, Map, Set> {
+        match self {
+            Self::Map(arr) => Arrangement::Map(arr.leave_region()),
+            Self::Set(arr) => Arrangement::Set(arr.leave_region()),
+        }
+    }
 }
 
-pub(super) struct Arrangements<'a, 'b, P, T>
+pub(super) struct Arrangements<'a, S, T>
 where
-    P: ScopeParent,
-    P::Timestamp: Lattice + Ord,
-    T: Refines<P::Timestamp> + Lattice + Timestamp + Ord,
-    'a: 'b,
+    S: Scope,
+    S::Timestamp: Lattice + Refines<T>,
+    T: Lattice + Timestamp,
 {
-    pub(super) arrangements1: &'b FnvHashMap<
-        ArrId,
-        ArrangedCollection<Child<'a, P, T>, TValAgent<Child<'a, P, T>>, TKeyAgent<Child<'a, P, T>>>,
-    >,
-    pub(super) arrangements2: &'b FnvHashMap<
-        ArrId,
-        ArrangedCollection<Child<'a, P, T>, TValEnter<'a, P, T>, TKeyEnter<'a, P, T>>,
-    >,
+    pub(super) arrangements: &'a FnvHashMap<ArrId, ArrangementFlavor<S, T>>,
 }
 
-impl<'a, 'b, P, T> Arrangements<'a, 'b, P, T>
+impl<'a, S, T> Arrangements<'a, S, T>
 where
-    P: ScopeParent,
-    P::Timestamp: Lattice + Ord,
-    T: Refines<P::Timestamp> + Lattice + Timestamp + Ord,
-    'a: 'b,
+    S: Scope,
+    S::Timestamp: Lattice + Refines<T>,
+    T: Lattice + Timestamp,
 {
-    pub(super) fn lookup_arr(&self, arrid: ArrId) -> A<'a, 'b, P, T> {
-        self.arrangements1.get(&arrid).map_or_else(
-            || {
-                self.arrangements2
-                    .get(&arrid)
-                    .map(|arr| A::Arrangement2(arr))
-                    .unwrap_or_else(|| panic!("mk_rule: unknown arrangement {:?}", arrid))
-            },
-            |arr| A::Arrangement1(arr),
-        )
+    pub(super) fn lookup_arr(&self, arrid: ArrId) -> ArrangementFlavor<S, T> {
+        self.arrangements
+            .get(&arrid)
+            .cloned()
+            .unwrap_or_else(|| panic!("mk_rule: unknown arrangement {:?}", arrid))
     }
 }
 
@@ -176,7 +201,7 @@ where
     G: Scope,
     G::Timestamp: Lattice,
     D: ExchangeData + Hashable,
-    R: Monoid + ExchangeData + One + Neg<Output = R> + Add<R, Output = R>,
+    R: Monoid + ExchangeData + Neg<Output = R> + Add<R, Output = R> + From<i8>,
 {
     collection
         .concat(
@@ -186,8 +211,8 @@ where
                 .arrange_by_self()
                 .reduce(|_, src, dst| {
                     // If the input weight is 1, don't produce a surplus record.
-                    if !src[0].1.is_one() {
-                        dst.push(((), <R>::one() + src[0].1.clone().neg()))
+                    if src[0].1 != R::from(1) {
+                        dst.push(((), R::from(1) + src[0].1.clone().neg()))
                     }
                 })
                 .map(|x| x.0),

@@ -1,14 +1,15 @@
 #![allow(
     clippy::get_unwrap,
     clippy::missing_safety_doc,
-    clippy::type_complexity,
-    clippy::match_like_matches_macro
+    clippy::type_complexity
 )]
 
 mod callback;
+mod dataflow;
 mod ddlog;
 mod profile;
 mod profile_statistics;
+mod render;
 pub mod replay;
 mod valmap;
 mod variable;

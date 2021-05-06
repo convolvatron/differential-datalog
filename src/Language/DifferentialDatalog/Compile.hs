@@ -210,6 +210,7 @@ rustLibFiles =
         , ("differential_datalog/src/program/arrange.rs"          , $(embedFile "rust/template/differential_datalog/src/program/arrange.rs"))
         , ("differential_datalog/src/program/timestamp.rs"        , $(embedFile "rust/template/differential_datalog/src/program/timestamp.rs"))
         , ("differential_datalog/src/program/worker.rs"           , $(embedFile "rust/template/differential_datalog/src/program/worker.rs"))
+        , ("differential_datalog/src/program/config.rs"           , $(embedFile "rust/template/differential_datalog/src/program/config.rs"))
         , ("differential_datalog/src/record/mod.rs"               , $(embedFile "rust/template/differential_datalog/src/record/mod.rs"))
         , ("differential_datalog/src/record/tuples.rs"            , $(embedFile "rust/template/differential_datalog/src/record/tuples.rs"))
         , ("differential_datalog/src/record/arrays.rs"            , $(embedFile "rust/template/differential_datalog/src/record/arrays.rs"))
@@ -217,6 +218,14 @@ rustLibFiles =
         , ("differential_datalog/src/test_record.rs"              , $(embedFile "rust/template/differential_datalog/src/test_record.rs"))
         , ("differential_datalog/src/valmap.rs"                   , $(embedFile "rust/template/differential_datalog/src/valmap.rs"))
         , ("differential_datalog/src/variable.rs"                 , $(embedFile "rust/template/differential_datalog/src/variable.rs"))
+        , ("differential_datalog/src/render/mod.rs"               , $(embedFile "rust/template/differential_datalog/src/render/mod.rs"))
+        , ("differential_datalog/src/render/arrange_by.rs"        , $(embedFile "rust/template/differential_datalog/src/render/arrange_by.rs"))
+        , ("differential_datalog/src/dataflow/mod.rs"             , $(embedFile "rust/template/differential_datalog/src/dataflow/mod.rs"))
+        , ("differential_datalog/src/dataflow/arrange.rs"         , $(embedFile "rust/template/differential_datalog/src/dataflow/arrange.rs"))
+        , ("differential_datalog/src/dataflow/consolidate.rs"     , $(embedFile "rust/template/differential_datalog/src/dataflow/consolidate.rs"))
+        , ("differential_datalog/src/dataflow/distinct.rs"        , $(embedFile "rust/template/differential_datalog/src/dataflow/distinct.rs"))
+        , ("differential_datalog/src/dataflow/filter_map.rs"      , $(embedFile "rust/template/differential_datalog/src/dataflow/filter_map.rs"))
+        , ("differential_datalog/src/dataflow/map.rs"             , $(embedFile "rust/template/differential_datalog/src/dataflow/map.rs"))
         , ("differential_datalog_test/Cargo.toml"                 , $(embedFile "rust/template/differential_datalog_test/Cargo.toml"))
         , ("differential_datalog_test/lib.rs"                     , $(embedFile "rust/template/differential_datalog_test/lib.rs"))
         , ("differential_datalog_test/test_value.rs"              , $(embedFile "rust/template/differential_datalog_test/test_value.rs"))
@@ -775,8 +784,8 @@ mkCargoToml rs_code crate crate_id =
            "erased-serde = \"0.3\""                                                        $$
            --"differential-dataflow = \"0.11.0\""                                            $$
            --"timely = \"0.11\""                                                             $$
-           "differential-dataflow = { git = \"https://github.com/ddlog-dev/differential-dataflow\", branch = \"ddlog-2\" }" $$
-           "timely = { git = \"https://github.com/ddlog-dev/timely-dataflow\", branch = \"ddlog-2\" }"  $$
+           "differential-dataflow = { git = \"https://github.com/ddlog-dev/differential-dataflow\", branch = \"ddlog-4\" }" $$
+           "timely = { git = \"https://github.com/ddlog-dev/timely-dataflow\", branch = \"ddlog-4\",  default-features = false }"  $$
            ""                                                                              $$
            dependencies                                                                    $$
            ""                                                                              $$
@@ -2354,7 +2363,7 @@ mkFFun :: (?cfg::Config, ?specname::String, ?statics::CrateStatics, ?crate_graph
 mkFFun _ Rule{} [] = "None"
 mkFFun d rl@Rule{..} input_filters =
    let open = openAtom d vALUE_VAR rl 0 (rhsAtom $ ruleRHS !! 0) ("return false")
-       checks = hsep $ punctuate " &&"
+       checks = parens $ vcat $ punctuate " &&"
                 $ map (\i -> mkExpr d (CtxRuleRCond rl i) (rhsExpr $ ruleRHS !! i) EVal) input_filters
    in "Some({fn __f(" <> vALUE_VAR <> ": &DDValue) -> bool" $$
       (braces' $ open $$ checks)                             $$
