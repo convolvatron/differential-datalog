@@ -4,8 +4,7 @@
 
 use differential_datalog::{ddval::DDValue, program::RelId, program::Update, DeltaMap};
 
-// not really, we aren't going to be compiling against the user program
-use mm_ddlog::*;
+use d3_supervisor_ddlog::{relid2name, Relations, UpdateSerializer}; // bad linkage
 
 use serde::{
     de, de::SeqAccess, de::Visitor, ser::SerializeTuple, Deserialize, Deserializer, Serialize,

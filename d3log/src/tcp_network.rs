@@ -13,10 +13,11 @@ use tokio::{
     task::JoinHandle,
 };
 
-use mm_ddlog::typedefs::d3::{ConnectionStatus, TcpAddress};
+use d3_supervisor_ddlog::typedefs::{ConnectionStatus, TcpAddress};
 
 use crate::{
-    json_framer::JsonFramer, now, transact::ArcTransactionManager, Batch, Node, Port, Transport,
+    batch::Batch, json_framer::JsonFramer, now, transact::ArcTransactionManager, Node, Port,
+    Transport,
 };
 
 use differential_datalog::ddval::DDValConvert;

@@ -6,17 +6,20 @@
 // will be other ddlog executables
 
 use crate::{
-    json_framer::JsonFramer, tcp_network::ArcTcpNetwork, transact::ArcTransactionManager, Batch,
-    Node, Port, Transport,
+    dispatch::Dispatch, json_framer::JsonFramer, tcp_network::ArcTcpNetwork,
+    transact::ArcTransactionManager, Batch, Node, Port, Transport,
 };
 
-use std::sync::Arc;
+use d3_supervisor_ddlog::typedefs::Process; /*ProcessStatus*/
+
+use std::sync::{Arc, Mutex};
 use tokio::{io::AsyncReadExt, io::AsyncWriteExt, runtime::Runtime, spawn};
 use tokio_fd::AsyncFd;
 
 use rand::Rng;
+use std::collections::HashMap;
 use std::convert::TryFrom;
-use std::io::{Error, ErrorKind};
+// use std::io::{Error, ErrorKind};
 
 type Fd = std::os::unix::io::RawFd;
 use nix::unistd::*;
@@ -48,11 +51,17 @@ impl Transport for FileDescriptor {
 
 // this is the self-framed json input from stdout of one of my children
 // would rather hide h
+//
 // there is an event barrier here, but its pretty lacking. the first
 // batch to arrive is assumed to contain everything needed.  so once
 // we get that from everyone, we kick off evaluation
 
-async fn read_output(t: ArcTransactionManager, f: Box<Fd>) -> Result<(), std::io::Error> {
+// should take a closure..we'd also like to assert its stdout - maybe as an entirety?
+// naw..incremental
+async fn read_json_batch_output(
+    t: ArcTransactionManager,
+    f: Box<Fd>,
+) -> Result<(), std::io::Error> {
     let mut jf = JsonFramer::new();
     let mut pin = AsyncFd::try_from(*f)?;
     let mut buffer = [0; 64];
@@ -66,7 +75,7 @@ async fn read_output(t: ArcTransactionManager, f: Box<Fd>) -> Result<(), std::io
     }
 }
 
-pub fn start_node(f: Vec<Fd>) {
+pub fn start_node() {
     let rt = Runtime::new().unwrap();
     let _eg = rt.enter();
 
@@ -90,7 +99,7 @@ pub fn start_node(f: Vec<Fd>) {
         for i in f {
             let tmclone = tm.clone();
             spawn(async move {
-                read_output(tmclone, Box::new(i))
+                read_json_batch_output(tmclone, Box::new(i))
                     .await
                     .unwrap_or_else(|error| {
                         panic!("err {}", error);
@@ -108,46 +117,68 @@ pub fn start_node(f: Vec<Fd>) {
     });
 }
 
-pub fn make_child() -> Result<(Fd, Fd), nix::Error> {
-    let (in_r, in_w) = pipe().unwrap();
-    let (out_r, out_w) = pipe().unwrap();
+#[derive(Clone)]
+pub struct ProcessManager {
+    processes: Arc<Mutex<HashMap<u128, u32>>>,
+}
 
-    match unsafe { fork()? } {
-        // child was here before .. we'll want that for kills from here, i guess we
-        // could close stdin
-        ForkResult::Parent { .. } => Ok((in_w, out_r)),
-
-        // maybe it makes sense to run the management json over different
-        // file descriptors so we can use stdout for ad-hoc debugging
-        // without confusing the json parser
-        ForkResult::Child => {
-            dup2(out_w, CHILD_OUTPUT_FD)?;
-            dup2(in_r, CHILD_INPUT_FD)?;
-            start_node(vec![0]);
-            Ok((in_w, out_r))
+impl Transport for ProcessManager {
+    fn send(&self, _nid: Node, b: Batch) {
+        for (r, v, w) in b {
+            let p = v as Process;
+            // what about other values of w?
+            if w == -1 {
+                // kill if we can find the uuid
+            }
+            if w == 1 {
+                let pid = self.make_child(v as Process).expect("fork failure");
+                self.processes.lock().expect("lock").insert(v.uuid, pid);
+            }
         }
     }
 }
 
-// parameterize network..with i guess a factory!
-// i would kind of prefer to kick off init from inside ddlog, but
-// odaat
+impl ProcessManager {
+    pub fn new(d: Dispatch) -> ProcessManager {
+        let p = ProcessManager {
+            processes: Arc::new(Mutex::new(HashMap::new())),
+        };
+        d.register("Process", Arc::new(p.clone()));
+        p
+    }
 
-pub fn start_children(n: usize, _init: Batch) -> Result<(), std::io::Error> {
-    let mut children_in = Vec::<Fd>::new();
-    let mut children_out = Vec::<Fd>::new();
+    // arrange to listen to management channels if they exist
+    // this should manage a filesystem resident cache of executable images,
+    // potnetially addressed with a uuid or a url
 
-    // 0 is us
-    for _i in 1..n {
-        match make_child() {
-            Ok((to, from)) => {
-                children_in.push(from);
-                children_out.push(to);
+    // in the earlier model, we deliberately refrained from
+    // starting the multithreaded tokio runtime until after
+    // we'd forked all the children. lets see if we can
+    // can fork this executable w/o running exec if tokio has been
+    // started
+    pub fn make_child(v: Process) -> Result<u32, nix::Error> {
+        let (in_r, in_w) = pipe().unwrap();
+        let (out_r, out_w) = pipe().unwrap();
+
+        match unsafe { fork()? } {
+            ForkResult::Parent { pid } => {
+                let f = FileDescriptor {
+                    input: out_r,
+                    output: in_w,
+                };
+                // this goes to
+                // register i/o here
             }
-            Err(x) => return Err(Error::new(ErrorKind::Other, format!("oh no! {}", x))),
+
+            // maybe it makes sense to run the management json over different
+            // file descriptors so we can use stdout for ad-hoc debugging
+            // without confusing the json parser
+            ForkResult::Child => {
+                dup2(out_w, CHILD_OUTPUT_FD)?;
+                dup2(in_r, CHILD_INPUT_FD)?;
+                start_node(vec![0]);
+                Ok((in_w, out_r))
+            }
         }
     }
-    // wire up nid 0s address..no one is listening to my stdin!
-    start_node(children_in);
-    Ok(())
 }

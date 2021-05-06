@@ -3,13 +3,17 @@
 // the relation id and the envelope. This would replace Transact.forward, which seems
 // correct
 
-use crate::{Batch, Node, Port, Transport};
+use crate::{batch::Batch, Node, Port, Transport};
 use differential_datalog::program::RelId;
 use std::collections::HashMap;
+use std::convert::TryFrom;
+use std::io::{Error, ErrorKind};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 
-struct Dispatch {
+use d3_supervisor_ddlog::Relations; // bad linkage
+
+pub struct Dispatch {
     count: AtomicUsize,
     handlers: Arc<Mutex<HashMap<RelId, Vec<(u64, Port)>>>>,
 }
@@ -41,7 +45,7 @@ impl Transport for Dispatch {
 
 // probably need to wrap in an arcmutex
 impl Dispatch {
-    fn new() -> Dispatch {
+    pub fn new() -> Dispatch {
         Dispatch {
             handlers: Arc::new(Mutex::new(HashMap::new())),
             count: AtomicUsize::new(0),
@@ -49,12 +53,23 @@ impl Dispatch {
     }
 
     // deregstration? return a handle?
-    fn register(self, r: RelId, p: Port) -> Result<(), std::io::Error> {
+    pub fn register(self, relation_name: &str, p: Port) -> Result<(), std::io::Error> {
         let id = self.count.fetch_add(1, Ordering::SeqCst);
+
+        let relid = match Relations::try_from(relation_name) {
+            Ok(x) => x as usize,
+            Err(_x) => {
+                return Err(Error::new(
+                    ErrorKind::Other,
+                    format!("bad relation {}", relation_name),
+                ))
+            }
+        };
+
         self.handlers
             .lock()
             .expect("lock")
-            .entry(r)
+            .entry(relid)
             .or_insert_with(|| Vec::new())
             .push((id as u64, p));
         Ok(())

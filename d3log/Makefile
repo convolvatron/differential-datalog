@@ -2,15 +2,16 @@
 EXEC = target/debug/mm3
 all: out
 DIST = ..
+TARGET = d3_supervisor
 
-mm_ddlog/types/mm.rs: mm.dl d3.dl
-	ddlog --no-staticlib --dynlib --action compile -L$(DIST)/lib --d3log -i mm.dl
+$(TARGET)_ddlog/types/$(TARGET).rs: d3_supervisor.dl
+	ddlog --no-staticlib --dynlib --action compile -L$(DIST)/lib --d3log -i $(TARGET).dl
 
-$(EXEC): mm_ddlog/types/mm.rs src/*.rs 
+$(EXEC): $(TARGET)_ddlog/types/$(TARGET).rs src/*.rs 
 	cargo build
 
 out: $(EXEC)
 	$(EXEC) -n 3
 
 clean:
-	rm -rf mm_ddlog
+	rm -rf $(TARGET)_ddlog

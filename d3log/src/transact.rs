@@ -3,13 +3,13 @@
 // single-value-serialization/progress would go here
 
 use crate::{batch::Batch, Node, Port};
+use d3_supervisor_ddlog::api::HDDlog;
+use d3_supervisor_ddlog::typedefs::Workers;
 use differential_datalog::{
     ddval::{DDValConvert, DDValue},
     program::Update,
     D3log, DDlog, DDlogDynamic, DDlogInventory,
 };
-use mm_ddlog::api::HDDlog;
-use mm_ddlog::typedefs::d3::Workers;
 
 use std::collections::HashMap;
 use std::io::{Error, ErrorKind};
