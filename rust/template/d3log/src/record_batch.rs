@@ -32,10 +32,19 @@ macro_rules! fact {
         Batch::Rec(RecordBatch::singleton(
             Record::NamedStruct(
                 Cow::from(stringify!($rel).to_string()),
-                vec![$((Cow::from(stringify!($n)), $v),)*])))
+                vec![$((Cow::from(stringify!($n)), $v),)*]), 1))
     }
 }
 
+#[macro_export]
+macro_rules! nega_fact {
+    ( $rel:path,  $($n:ident => $v:expr),* ) => {
+        Batch::Rec(RecordBatch::singleton(
+            Record::NamedStruct(
+                Cow::from(stringify!($rel).to_string()),
+                vec![$((Cow::from(stringify!($n)), $v),)*]), -1))
+    }
+}
 impl Display for RecordBatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut m = HashMap::new();
@@ -228,10 +237,10 @@ impl RecordBatch {
         }
     }
 
-    pub fn singleton(rec: Record) -> RecordBatch {
+    pub fn singleton(rec: Record, weight: isize) -> RecordBatch {
         RecordBatch {
             timestamp: 0,
-            records: vec![(rec, 1)],
+            records: vec![(rec, weight)],
         }
     }
 
