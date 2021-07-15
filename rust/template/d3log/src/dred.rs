@@ -7,7 +7,8 @@ use crate::{Batch, DDValueBatch, Evaluator, Port, Transport};
 use std::cell::RefCell;
 use std::sync::Arc;
 
-struct Dred {
+#[derive(Clone)]
+pub struct Dred {
     eval: Evaluator,
     out_port: Port,
     accumulator: RefCell<DDValueBatch>,
@@ -16,15 +17,17 @@ struct Dred {
 unsafe impl Sync for Dred {}
 
 impl Dred {
-    fn new(eval: Evaluator, out_port: Port) -> Port {
-        Arc::new(Dred {
+    pub fn new(eval: Evaluator, out_port: Port) -> (Self, Port) {
+        let d = Dred {
             eval,
             out_port,
             accumulator: RefCell::new(DDValueBatch::new()),
-        })
+        };
+
+        (d.clone(), Arc::new(d))
     }
 
-    fn close(&self) {
+    pub fn close(&self) {
         let batch = Batch::Value(self.accumulator.borrow().clone());
         self.out_port.send(batch);
     }
