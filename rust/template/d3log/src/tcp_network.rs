@@ -131,7 +131,7 @@ pub async fn tcp_bind(
                             .expect("json coding error")
                         {
                             dred_port.send(Batch::Value(async_error!(
-                                mclone.clone(),
+                                eclone.clone(),
                                 eclone.clone().deserialize_batch(i)
                             )));
                         }
