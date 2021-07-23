@@ -180,13 +180,10 @@ impl Transport for Arc<ThreadInstance> {
                     println!("Spawning a thread");
                     value.1 = Some(tx.clone());
                     thread::spawn(move || {
-                        let (_p, _init_batch, ep, _jh) = async_error!(
+                        let rt = Arc::new(Runtime::new().unwrap());
+                        let (_p, _init_batch, ep, _jh, _dispatch, forwarder) = async_error!(
                             new_self.eval,
-                            start_instance(
-                                new_self.rt.clone(),
-                                new_self.new_evaluator.clone(),
-                                uuid
-                            )
+                            start_instance(rt.clone(), new_self.new_evaluator.clone(), uuid)
                         );
                         println!(
                             "Started a new instance with thread id {:?}",
@@ -196,7 +193,7 @@ impl Transport for Arc<ThreadInstance> {
                             new_self.accumulator.lock().expect("lock").clone(),
                         ));
 
-                        new_self.forwarder.register(uuid, ep.clone());
+                        //new_self.forwarder.register(uuid, ep.clone());
                         forwarder
                             .register(new_self.eval.clone().myself(), new_self.evalport.clone());
 
@@ -286,5 +283,29 @@ pub fn start_instance(
         b: accu_batch.clone(),
     }));
     eval_port.send(fact!(d3_application::Myself, me => uuid.into_record()));
-    Ok((broadcast, init_batch, eval_port, dispatch, forwarder))
+
+    let management_clone = broadcast.clone();
+    let forwarder_clone = forwarder.clone();
+    let eval_clone = eval.clone();
+    let dispatch_clone = dispatch.clone();
+    let rt_clone = rt.clone();
+
+    let handle = rt_clone.spawn(async move {
+        async_error!(
+            eval.clone(),
+            tcp_bind(
+                dispatch_clone,
+                uuid,
+                forwarder_clone,
+                management_clone.clone(),
+                eval_clone.clone(),
+                management_clone.clone(),
+                rt.clone(),
+            )
+            .await
+        );
+    });
+    Ok((
+        broadcast, init_batch, eval_port, handle, dispatch, forwarder,
+    ))
 }

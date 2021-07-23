@@ -10,11 +10,14 @@
 //
 // put a queue on the TcpPeer to allow for misordering wrt TcpAddress and to cover setup
 
-use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::TcpListener, net::TcpStream, sync::Mutex};
+use tokio::{
+    io::AsyncReadExt, io::AsyncWriteExt, net::TcpListener, net::TcpStream, runtime::Runtime,
+    sync::Mutex,
+};
 
 use crate::{
-    async_error, fact, json_framer::JsonFramer, nega_fact, send_error, Batch, DDValueBatch,
-    Dispatch, Error, Evaluator, Forwarder, Node, Port, RecordBatch, Transport,
+    async_error, fact, function, json_framer::JsonFramer, nega_fact, send_error, Batch,
+    DDValueBatch, Dispatch, Dred, Error, Evaluator, Forwarder, Node, Port, RecordBatch, Transport,
 };
 
 use differential_datalog::record::*;
@@ -26,6 +29,7 @@ struct AddressListener {
     eval: Evaluator,
     forwarder: Arc<Forwarder>,
     management: Port,
+    rt: Arc<Runtime>,
 }
 
 impl Transport for AddressListener {
@@ -51,6 +55,7 @@ impl Transport for AddressListener {
                                         address: address.unwrap(), //async error
                                                                    // sends: Vec::new(),
                                     })),
+                                    rt: self.rt.clone(),
                                 }),
                             );
                             return;
@@ -81,6 +86,7 @@ pub async fn tcp_bind(
     data: Port,
     eval: Evaluator, // evaluator is a data port, or a management port?
     management: Port,
+    rt: Arc<Runtime>,
 ) -> Result<(), Error> {
     dispatch.register(
         "d3_application::TcpAddress",
@@ -88,6 +94,7 @@ pub async fn tcp_bind(
             eval: eval.clone(),
             forwarder,
             management: management.clone(),
+            rt: rt.clone(),
         }),
     )?;
 
@@ -119,7 +126,7 @@ pub async fn tcp_bind(
         let mclone = management.clone();
         let (dred, dred_port) = Dred::new(eclone.clone(), dclone);
 
-        tokio::spawn(async move {
+        rt.spawn(async move {
             let mut jf = JsonFramer::new();
             let mut buffer = [0; 64];
             loop {
@@ -163,6 +170,7 @@ struct TcpPeer {
     tcp_inner: Arc<Mutex<TcpPeerInternal>>,
     eval: Evaluator,
     management: Port,
+    rt: Arc<Runtime>,
 }
 
 impl Transport for TcpPeer {
@@ -171,7 +179,7 @@ impl Transport for TcpPeer {
 
         // xxx - do these join handles need to be collected and waited upon for
         // resource recovery?
-        tokio::spawn(async move {
+        self.rt.spawn(async move {
             let mut tcp_peer = tcp_inner_clone.lock().await;
 
             if tcp_peer.stream.is_none() {

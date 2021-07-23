@@ -106,6 +106,12 @@ use std::ops::DerefMut;
 impl Transport for Forwarder {
     fn send(&self, b: Batch) {
         let mut output = HashMap::<Node, Box<DDValueBatch>>::new();
+
+        println!(
+            "forwarder {}",
+            RecordBatch::from(self.eval.clone(), b.clone())
+        );
+
         for (rel, v, weight) in &DDValueBatch::from(&(*self.eval), b).expect("iterator") {
             if let Some((loc_id, in_rel, inner_val)) = self.eval.localize(rel, v.clone()) {
                 output
