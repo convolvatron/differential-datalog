@@ -4,7 +4,9 @@ mod dispatch;
 pub mod dred;
 pub mod error;
 mod forwarder;
+mod json_framer;
 pub mod record_batch;
+pub mod tcp_network;
 
 use core::fmt;
 use differential_datalog::{ddval::DDValue, record::*, D3logLocationId};
@@ -24,6 +26,7 @@ use crate::{
     error::Error,
     forwarder::Forwarder,
     record_batch::RecordBatch,
+    tcp_network::tcp_bind,
 };
 
 pub type Node = D3logLocationId;
@@ -181,7 +184,7 @@ impl Transport for Arc<ThreadInstance> {
                     value.1 = Some(tx.clone());
                     thread::spawn(move || {
                         let rt = Arc::new(Runtime::new().unwrap());
-                        let (_p, _init_batch, ep, _jh, _dispatch, forwarder) = async_error!(
+                        let (_p, _init_batch, ep, _dispatch, forwarder) = async_error!(
                             new_self.eval,
                             start_instance(rt.clone(), new_self.new_evaluator.clone(), uuid)
                         );
@@ -282,6 +285,7 @@ pub fn start_instance(
         eval: eval.clone(),
         b: accu_batch.clone(),
     }));
+
     eval_port.send(fact!(d3_application::Myself, me => uuid.into_record()));
 
     let management_clone = broadcast.clone();
@@ -305,7 +309,5 @@ pub fn start_instance(
             .await
         );
     });
-    Ok((
-        broadcast, init_batch, eval_port, handle, dispatch, forwarder,
-    ))
+    Ok((broadcast, init_batch, eval_port, dispatch, forwarder))
 }
