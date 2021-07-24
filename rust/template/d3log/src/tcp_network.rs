@@ -22,15 +22,23 @@ use crate::{
 
 use colored::Colorize;
 use differential_datalog::record::*;
+use lazy_static::lazy_static;
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::net::SocketAddr;
 use std::sync::Arc;
+use std::sync::Mutex as stdMutex;
 
 struct AddressListener {
     eval: Evaluator,
     forwarder: Arc<Forwarder>,
     management: Port,
     rt: Arc<Runtime>,
+}
+
+lazy_static! {
+    static ref BINDMAP: Arc<stdMutex<HashMap<String, bool>>> =
+        Arc::new(stdMutex::new(HashMap::new()));
 }
 
 impl Transport for AddressListener {
@@ -46,27 +54,35 @@ impl Transport for AddressListener {
                                 async_error!(self.eval.clone(), FromRecord::from_record(&location));
                             // we add an entry to forward this nid to this tcp address
 
-                            println!(
-                                "{} forward.register uuid: {} addr {}",
-                                function!().blue().bold(),
-                                loc,
-                                address.clone().unwrap(),
-                            );
-                            self.forwarder.register(
-                                loc,
-                                Arc::new(TcpPeer {
-                                    management: self.management.clone(),
-                                    eval: self.eval.clone(),
-                                    tcp_inner: Arc::new(Mutex::new(TcpPeerInternal {
+                            if BINDMAP.lock().expect("lock").get(string).is_none() {
+                                println!(
+                                    "{} forward.register uuid: {} addr {}",
+                                    function!().blue().bold(),
+                                    loc,
+                                    address.clone().unwrap(),
+                                );
+                                self.forwarder.register(
+                                    loc,
+                                    Arc::new(TcpPeer {
+                                        management: self.management.clone(),
                                         eval: self.eval.clone(),
-                                        stream: None,
-                                        address: address.unwrap(), //async error
-                                                                   // sends: Vec::new(),
-                                    })),
-                                    rt: self.rt.clone(),
-                                }),
-                            );
-                            return;
+                                        tcp_inner: Arc::new(Mutex::new(TcpPeerInternal {
+                                            eval: self.eval.clone(),
+                                            stream: None,
+                                            address: address.unwrap(), //async error
+                                                                       // sends: Vec::new(),
+                                        })),
+                                        rt: self.rt.clone(),
+                                    }),
+                                );
+                                BINDMAP.lock().expect("lock").insert(string.clone(), true);
+                                for (k, v) in BINDMAP.lock().expect("lock").iter() {
+                                    println!("k {}, v {}", k, v);
+                                }
+                                return;
+                            } else {
+                                continue;
+                            }
                         }
                         _ => async_error!(
                             self.eval.clone(),
@@ -77,6 +93,8 @@ impl Transport for AddressListener {
                         ),
                     }
                 }
+            } else {
+                println!("AddrListener Malformed? {}", v);
             }
 
             async_error!(
