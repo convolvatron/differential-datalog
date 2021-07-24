@@ -33,7 +33,7 @@ impl Dred {
     }
 
     fn inspect_acc(&self) {
-        for (r, v, w) in &*self.accumulator.borrow() {
+        for (_r, _v, w) in &*self.accumulator.borrow() {
             println!("{}", w);
         }
     }

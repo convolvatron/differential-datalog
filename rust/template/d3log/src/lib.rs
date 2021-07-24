@@ -13,7 +13,7 @@ use differential_datalog::{ddval::DDValue, record::*, D3logLocationId};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt::Display;
-use std::sync::mpsc::{self, Sender, TryRecvError};
+use std::sync::mpsc::{self, channel, Receiver, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use tokio::runtime::Runtime;
@@ -92,13 +92,13 @@ impl Transport for AccumulatePort {
     }
 }
 
-use std::collections::VecDeque;
-
 struct EvalPort {
     eval: Evaluator,
     forwarder: Port,
     dispatch: Port,
-    queue: Arc<Mutex<VecDeque<Batch>>>,
+    //    queue: Arc<Mutex<VecDeque<Batch>>>,
+    s: Arc<Mutex<Sender<Batch>>>,
+    r: Arc<Mutex<Receiver<Batch>>>,
 }
 
 impl Transport for EvalPort {
@@ -109,27 +109,16 @@ impl Transport for EvalPort {
             RecordBatch::from(self.eval.clone(), b.clone())
         );
         self.dispatch.send(b.clone());
-
-        {
-            self.queue.lock().expect("lock").push_back(b.clone());
-        }
+        self.s.lock().expect("lock").send(b.clone());
 
         loop {
-            let b = {
-                match self.queue.try_lock() {
-                    Ok(mut x) => match x.pop_front() {
-                        Some(x) => x.clone(),
-                        None => {
-                            return;
-                        }
-                    },
-                    Err(_) => {
-                        return;
-                    }
+            match self.r.lock().expect("lock").try_recv() {
+                Ok(x) => {
+                    let out = async_error!(self.eval.clone(), self.eval.eval(x.clone()));
+                    self.forwarder.send(out.clone());
                 }
-            };
-            let out = async_error!(self.eval.clone(), self.eval.eval(b.clone()));
-            self.forwarder.send(out.clone());
+                Err(_) => return,
+            }
         }
     }
 }
@@ -180,17 +169,12 @@ impl Transport for Arc<ThreadInstance> {
                 if thread_handle.is_none() {
                     let (tx, rx) = mpsc::channel();
                     let new_self = self.clone();
-                    println!("Spawning a thread");
                     value.1 = Some(tx.clone());
                     thread::spawn(move || {
                         let rt = Arc::new(Runtime::new().unwrap());
                         let (_p, _init_batch, ep, _dispatch, forwarder) = async_error!(
                             new_self.eval,
                             start_instance(rt.clone(), new_self.new_evaluator.clone(), uuid)
-                        );
-                        println!(
-                            "Started a new instance with thread id {:?}",
-                            thread::current().id()
                         );
                         ep.send(Batch::Value(
                             new_self.accumulator.lock().expect("lock").clone(),
@@ -258,12 +242,14 @@ pub fn start_instance(
     let forwarder = Forwarder::new(eval.clone(), dispatch.clone(), broadcast.clone());
     let accu_batch = Arc::new(Mutex::new(DDValueBatch::new()));
 
+    let (esend, erecv) = channel();
     // shouldn't evaluator just implement Transport?
     let eval_port = Arc::new(EvalPort {
         forwarder: forwarder.clone(),
         dispatch: dispatch.clone(),
         eval: eval.clone(),
-        queue: Arc::new(Mutex::new(VecDeque::new())),
+        s: Arc::new(Mutex::new(esend)),
+        r: Arc::new(Mutex::new(erecv)),
     });
 
     dispatch.clone().register(
@@ -294,7 +280,7 @@ pub fn start_instance(
     let dispatch_clone = dispatch.clone();
     let rt_clone = rt.clone();
 
-    let handle = rt_clone.spawn(async move {
+    let _handle = rt_clone.spawn(async move {
         async_error!(
             eval.clone(),
             tcp_bind(
