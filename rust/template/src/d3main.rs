@@ -19,7 +19,7 @@ use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json;
-use tokio::runtime::Runtime;
+use tokio::runtime::{Builder, Runtime};
 
 pub struct Null {}
 impl Transport for Null {
@@ -232,16 +232,27 @@ pub fn start_d3log() -> Result<(), Error> {
     } else {
         // use uuid crate
         (
-            u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>()),
-            true,
+            //u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>()),
+            0, true,
         )
     };
 
     let d =
         move |id: u128, error: Port| -> Result<(Evaluator, Batch), Error> { D3::new(id, error) };
 
-    let rt = Arc::new(Runtime::new()?);
-    let (management, init_batch, _eval_port, dispatch, _forwarder) =
+    //let rt = Arc::new(Runtime::new()?);
+    let th_name = String::from("async-rt-") + &uuid.to_string();
+    let rt = Arc::new(
+        Builder::new_multi_thread()
+            .worker_threads(1)
+            .max_blocking_threads(1)
+            .thread_name(th_name)
+            .enable_all()
+            .build()
+            .unwrap(),
+    );
+
+    let (management, init_batch, _eval_port, instance_future, dispatch, _forwarder) =
         start_instance(rt.clone(), Arc::new(d), uuid)?;
 
     if is_parent {
@@ -263,8 +274,9 @@ pub fn start_d3log() -> Result<(), Error> {
         });
     }
     //    rt.shutdown();
-    //rt.block_on(instance_future)?;
-    loop {
+    rt.block_on(instance_future)?;
+    Ok(())
+    /*loop {
         std::thread::park();
-    }
+    }*/
 }

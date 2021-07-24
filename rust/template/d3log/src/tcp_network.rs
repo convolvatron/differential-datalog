@@ -20,6 +20,7 @@ use crate::{
     DDValueBatch, Dispatch, Dred, Error, Evaluator, Forwarder, Node, Port, RecordBatch, Transport,
 };
 
+use colored::Colorize;
 use differential_datalog::record::*;
 use std::borrow::Cow;
 use std::net::SocketAddr;
@@ -44,6 +45,13 @@ impl Transport for AddressListener {
                             let loc: u128 =
                                 async_error!(self.eval.clone(), FromRecord::from_record(&location));
                             // we add an entry to forward this nid to this tcp address
+
+                            println!(
+                                "{} forward.register uuid: {} addr {}",
+                                function!().blue().bold(),
+                                loc,
+                                address.clone().unwrap(),
+                            );
                             self.forwarder.register(
                                 loc,
                                 Arc::new(TcpPeer {
@@ -102,6 +110,11 @@ pub async fn tcp_bind(
     let listener = TcpListener::bind("127.0.0.1:0").await?;
     let addr = listener.local_addr().unwrap();
 
+    println!(
+        "[{}] Sending TcpAddress fact on managment bus addr {}",
+        function!().green(),
+        addr.to_string().yellow()
+    );
     management.send(fact!(
         d3_application::TcpAddress,
         location => me.into_record(),
@@ -110,8 +123,14 @@ pub async fn tcp_bind(
     let eclone = eval.clone();
     loop {
         // exchange ids
-        let (socket, _a) = listener.accept().await?;
+        let (socket, a) = listener.accept().await?;
 
+        println!(
+            "[{}] Socket accepted client {} <-> server {}!",
+            function!().yellow().on_black(),
+            a.to_string().black().on_yellow(),
+            addr.to_string().yellow()
+        );
         management.clone().send(fact!(
             d3_application::ConnectionStatus,
             time => eclone.clone().now().into_record(),

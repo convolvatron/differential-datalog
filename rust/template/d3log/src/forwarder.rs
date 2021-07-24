@@ -12,6 +12,8 @@ use std::collections::VecDeque;
 use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
+use colored::Colorize;
+
 struct ForwardingEntryHandler {
     eval: Evaluator,
     forwarder: Arc<Forwarder>,
@@ -57,6 +59,12 @@ impl Forwarder {
             eval: eval.clone(),
             fib: Arc::new(Mutex::new(HashMap::new())),
         });
+        println!(
+            "{} create for {}",
+            "[FORWARDER]".yellow().bold().italic(),
+            format!("[uuid:{}]", f.eval.clone().myself().to_string()).red(),
+        );
+
         dispatch
             .clone()
             .register(
@@ -96,6 +104,13 @@ impl Forwarder {
             p.clone().send(b);
         }
         while let Some(r) = { entry.lock().expect("lock").registrations.pop_front() } {
+            println!(
+                "{} {} {} from uuid {}",
+                "[FORWARDER]".black().on_cyan(),
+                "REGISTRATIION".yellow(),
+                format!("0x{:x}", &self as *const _ as u64).green(),
+                r.to_string().cyan()
+            );
             self.register(r, p.clone());
         }
     }
@@ -107,10 +122,11 @@ impl Transport for Forwarder {
     fn send(&self, b: Batch) {
         let mut output = HashMap::<Node, Box<DDValueBatch>>::new();
 
-        println!(
-            "forwarder {}",
-            RecordBatch::from(self.eval.clone(), b.clone())
-        );
+        let rb = RecordBatch::from(self.eval.clone(), b.clone());
+
+        if !rb.records.is_empty() {
+            println!("[FORWARDER] {}", rb);
+        }
 
         for (rel, v, weight) in &DDValueBatch::from(&(*self.eval), b).expect("iterator") {
             if let Some((loc_id, in_rel, inner_val)) = self.eval.localize(rel, v.clone()) {

@@ -4,8 +4,11 @@ mod dispatch;
 pub mod dred;
 pub mod error;
 mod forwarder;
+mod json_framer;
 pub mod record_batch;
+mod tcp_network;
 
+use colored::Colorize;
 use core::fmt;
 use differential_datalog::{ddval::DDValue, record::*, D3logLocationId};
 use std::borrow::Cow;
@@ -14,7 +17,8 @@ use std::fmt::Display;
 use std::sync::mpsc::{self, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread;
-use tokio::runtime::Runtime;
+use tokio::runtime::{Builder, Runtime};
+use tokio::task::JoinHandle;
 
 use crate::{
     broadcast::{Broadcast, PubSub},
@@ -24,6 +28,7 @@ use crate::{
     error::Error,
     forwarder::Forwarder,
     record_batch::RecordBatch,
+    tcp_network::tcp_bind,
 };
 
 pub type Node = D3logLocationId;
@@ -101,8 +106,9 @@ struct EvalPort {
 impl Transport for EvalPort {
     fn send(&self, b: Batch) {
         println!(
-            "ep {} {}",
-            self.eval.clone().myself(),
+            "{} [uuid:{}] {}",
+            "[EVALPORT]".yellow(),
+            self.eval.clone().myself().to_string().red(),
             RecordBatch::from(self.eval.clone(), b.clone())
         );
         self.dispatch.send(b.clone());
@@ -177,25 +183,34 @@ impl Transport for Arc<ThreadInstance> {
                 if thread_handle.is_none() {
                     let (tx, rx) = mpsc::channel();
                     let new_self = self.clone();
-                    println!("Spawning a thread");
+                    println!("[THREAD_INSTANCE] Spawning a thread");
                     value.1 = Some(tx.clone());
                     thread::spawn(move || {
-                        let rt = Arc::new(Runtime::new().unwrap());
+                        let th_name = String::from("async-rt-") + &uuid.to_string();
+                        let rt = Arc::new(
+                            Builder::new_multi_thread()
+                                .worker_threads(1)
+                                .max_blocking_threads(1)
+                                .thread_name(th_name)
+                                .enable_all()
+                                .build()
+                                .unwrap(),
+                        );
+
                         let (_p, _init_batch, ep, _jh, _dispatch, forwarder) = async_error!(
                             new_self.eval,
                             start_instance(rt.clone(), new_self.new_evaluator.clone(), uuid)
                         );
                         println!(
-                            "Started a new instance with thread id {:?}",
+                            "[THREAD_INSTANCE] Started a new instance with thread id {:?}",
                             thread::current().id()
                         );
                         ep.send(Batch::Value(
                             new_self.accumulator.lock().expect("lock").clone(),
                         ));
 
-                        //new_self.forwarder.register(uuid, ep.clone());
-                        forwarder
-                            .register(new_self.eval.clone().myself(), new_self.evalport.clone());
+                        new_self.forwarder.register(uuid, ep.clone());
+                        //forwarder.register(eval.clone().myself(), ep.clone());
 
                         loop {
                             match rx.try_recv() {
@@ -233,8 +248,34 @@ struct DebugPort {
 
 impl Transport for DebugPort {
     fn send(&self, b: Batch) {
-        for (_r, f, w) in &RecordBatch::from(self.eval.clone(), b) {
-            println!("{} {}", f, w);
+        for (r, f, w) in &RecordBatch::from(self.eval.clone(), b) {
+            if let Some(name) = match f.clone() {
+                Record::NamedStruct(name, _) => Some(name),
+                _ => None,
+            } {
+                let new_name = if name == "PrintMSResult" {
+                    String::from(name).green()
+                } else {
+                    String::from("").green()
+                };
+
+                println!(
+                    "{} [uuid={}] {} {} {}",
+                    "[DEBUG_PORT]".blue().bold(),
+                    self.eval.clone().myself().to_string().red(),
+                    new_name,
+                    f,
+                    w
+                );
+            } else {
+                println!(
+                    "{} [uuid={}] {} {}",
+                    "[DEBUG_PORT]".blue().bold(),
+                    self.eval.clone().myself().to_string().red(),
+                    f,
+                    w
+                );
+            }
         }
     }
 }
@@ -243,7 +284,7 @@ pub fn start_instance(
     rt: Arc<Runtime>,
     new_evaluator: Arc<dyn Fn(Node, Port) -> Result<(Evaluator, Batch), Error> + Send + Sync>,
     uuid: u128,
-) -> Result<(Port, Batch, Port, Port, Arc<Forwarder>), Error> {
+) -> Result<(Port, Batch, Port, JoinHandle<()>, Port, Arc<Forwarder>), Error> {
     let broadcast = Broadcast::new();
     let (eval, init_batch) = new_evaluator(uuid, broadcast.clone())?;
     let dispatch = Arc::new(Dispatch::new(eval.clone()));
@@ -290,6 +331,7 @@ pub fn start_instance(
     let dispatch_clone = dispatch.clone();
     let rt_clone = rt.clone();
 
+    println!("[{}] calling tcp_bind", function!().blue().bold());
     let handle = rt_clone.spawn(async move {
         async_error!(
             eval.clone(),

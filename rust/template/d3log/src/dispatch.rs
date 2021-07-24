@@ -4,6 +4,7 @@
 
 use crate::{Batch, Error, Evaluator, Port, RecordBatch, Transport};
 
+use colored::Colorize;
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -43,17 +44,32 @@ impl Transport for Dispatch {
 
 impl Dispatch {
     pub fn new(eval: Evaluator) -> Dispatch {
-        Dispatch {
+        let d = Dispatch {
             eval,
             handlers: Arc::new(Mutex::new(HashMap::new())),
             count: Arc::new(AtomicUsize::new(0)),
-        }
+        };
+        println!(
+            "{} create for {}",
+            "[DISPATCHER]".magenta().bold(),
+            format!("[uuid:{}]", d.eval.clone().myself().to_string()).red(),
+        );
+        d
     }
 
     // deregstration? return a handle?
     // we should validate the relation_name? incl dynamic schema
     pub fn register(&self, relation_name: &str, p: Port) -> Result<(), Error> {
         let id = self.count.fetch_add(1, Ordering::SeqCst);
+
+        println!(
+            "{} {} {} {} for relation {}",
+            "[DISPATCHER]".magenta().bold(),
+            format!("[uuid:{}]", self.eval.clone().myself().to_string()).red(),
+            format!("[id:{}]", self.count.load(Ordering::SeqCst)).green(),
+            "REGISTRATION".italic().yellow(),
+            relation_name,
+        );
 
         self.handlers
             .lock()
