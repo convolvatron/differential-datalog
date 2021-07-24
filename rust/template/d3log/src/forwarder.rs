@@ -32,8 +32,25 @@ impl Transport for ForwardingEntryHandler {
             let e = self.forwarder.lookup(intermediate);
             let mut e2 = { e.lock().expect("lock") };
             match &e2.port {
-                Some(p) => self.forwarder.register(target, p.clone()),
+                Some(p) => {
+                    println!(
+                        "{} {} calling fwd register target: {} intermediate: {}",
+                        "[FORWARDING_EH]".cyan().bold().italic(),
+                        format!("[uuid:{}]", self.eval.clone().myself().to_string()).red(),
+                        target.to_string().clone(),
+                        intermediate.to_string().clone(),
+                    );
+
+                    self.forwarder.register(target, p.clone())
+                }
                 None => {
+                    println!(
+                        "{} {} deferring registration {}",
+                        "[FORWARDING_EH]".cyan().bold().italic(),
+                        format!("[uuid:{}]", self.eval.clone().myself().to_string()).red(),
+                        target.to_string().clone(),
+                    );
+
                     e2.registrations.push_back(target);
                 }
             }
@@ -75,6 +92,7 @@ impl Forwarder {
                 }),
             )
             .expect("register");
+
         f
     }
 
@@ -101,12 +119,19 @@ impl Forwarder {
         }
 
         while let Some(b) = { entry.lock().expect("lock").batches.pop_front() } {
+            println!(
+                "{} {} {}  batches send!",
+                "[FORWARDER]".yellow().bold().italic(),
+                format!("[uuid:{}]", self.eval.clone().myself().to_string()).red(),
+                "[REGISTER]".cyan().italic()
+            );
             p.clone().send(b);
         }
         while let Some(r) = { entry.lock().expect("lock").registrations.pop_front() } {
             println!(
-                "{} {} {} from uuid {}",
-                "[FORWARDER]".black().on_cyan(),
+                "{} {} {} {} from uuid {}",
+                "[FORWARDER]".yellow().bold().italic(),
+                format!("[uuid:{}]", self.eval.clone().myself().to_string()).red(),
                 "REGISTRATIION".yellow(),
                 format!("0x{:x}", &self as *const _ as u64).green(),
                 r.to_string().cyan()
@@ -125,7 +150,7 @@ impl Transport for Forwarder {
         let rb = RecordBatch::from(self.eval.clone(), b.clone());
 
         if !rb.records.is_empty() {
-            println!("[FORWARDER] {}", rb);
+            println!("{} {}", "[FORWARDER]".yellow().bold().italic(), rb);
         }
 
         for (rel, v, weight) in &DDValueBatch::from(&(*self.eval), b).expect("iterator") {

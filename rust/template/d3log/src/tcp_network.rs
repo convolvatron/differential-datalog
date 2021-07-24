@@ -221,8 +221,12 @@ impl Transport for TcpPeer {
 
             if tcp_peer.stream.is_none() {
                 // xxx use async_error
+                println!("Trying to connect to {}", tcp_peer.address);
                 tcp_peer.stream = match TcpStream::connect(tcp_peer.address).await {
-                    Ok(x) => Some(Arc::new(Mutex::new(x))),
+                    Ok(x) => {
+                        println!("Connected!!!");
+                        Some(Arc::new(Mutex::new(x)))
+                    }
                     Err(_x) => panic!("connection failure {}", tcp_peer.address),
                 };
             };
