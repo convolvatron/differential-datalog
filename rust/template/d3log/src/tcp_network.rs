@@ -37,6 +37,12 @@ impl Transport for AddressListener {
         for (_r, v, _w) in &RecordBatch::from(self.eval.clone(), b) {
             if let Some(destination) = v.get_struct_field("destination") {
                 if let Some(location) = v.get_struct_field("location") {
+                    println!(
+                        "address adv {} {} {}",
+                        self.eval.clone().myself(),
+                        destination,
+                        location
+                    );
                     match destination {
                         // what are the unused fields?
                         Record::String(string) => {
@@ -44,20 +50,18 @@ impl Transport for AddressListener {
                             let loc: u128 =
                                 async_error!(self.eval.clone(), FromRecord::from_record(&location));
                             // we add an entry to forward this nid to this tcp address
-                            self.forwarder.register(
-                                loc,
-                                Arc::new(TcpPeer {
-                                    management: self.management.clone(),
+                            let peer = Arc::new(TcpPeer {
+                                management: self.management.clone(),
+                                eval: self.eval.clone(),
+                                tcp_inner: Arc::new(Mutex::new(TcpPeerInternal {
                                     eval: self.eval.clone(),
-                                    tcp_inner: Arc::new(Mutex::new(TcpPeerInternal {
-                                        eval: self.eval.clone(),
-                                        stream: None,
-                                        address: address.unwrap(), //async error
-                                                                   // sends: Vec::new(),
-                                    })),
-                                    rt: self.rt.clone(),
-                                }),
-                            );
+                                    stream: None,
+                                    address: address.unwrap(), //async error
+                                                               // sends: Vec::new(),
+                                })),
+                                rt: self.rt.clone(),
+                            });
+                            self.forwarder.register(loc, peer);
                             return;
                         }
                         _ => async_error!(
@@ -143,10 +147,11 @@ pub async fn tcp_bind(
                             )));
                         }
                     }
-                    Err(x) => {
+                    Err(_) => {
                         // call Dred close to retract all the facts
                         dred.close();
                         // Retract the connection status fact too!
+                        // good! maybe we can just keep a copy of the original assertion?
                         mclone.send(nega_fact!(
                             d3_application::ConnectionStatus,
                             time => eclone.clone().now().into_record(),
@@ -176,7 +181,7 @@ struct TcpPeer {
 impl Transport for TcpPeer {
     fn send(&self, b: Batch) {
         let tcp_inner_clone = self.tcp_inner.clone();
-
+        let addr = self.eval.clone().myself();
         // xxx - do these join handles need to be collected and waited upon for
         // resource recovery?
         self.rt.spawn(async move {
@@ -185,7 +190,10 @@ impl Transport for TcpPeer {
             if tcp_peer.stream.is_none() {
                 // xxx use async_error
                 tcp_peer.stream = match TcpStream::connect(tcp_peer.address).await {
-                    Ok(x) => Some(Arc::new(Mutex::new(x))),
+                    Ok(x) => {
+                        println!("connect {} {}", addr, tcp_peer.address);
+                        Some(Arc::new(Mutex::new(x)))
+                    }
                     Err(_x) => panic!("connection failure {}", tcp_peer.address),
                 };
             };

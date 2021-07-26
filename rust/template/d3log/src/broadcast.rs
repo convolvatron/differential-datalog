@@ -3,7 +3,7 @@
 // order to maintain a consistent spanning tree (and a strategy for avoiding storms for temporariliy
 // inconsistent topologies
 
-use crate::{Batch, Port, Transport};
+use crate::{Batch, Error, Port, Transport};
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -33,6 +33,9 @@ impl Broadcast {
 
 pub trait PubSub {
     fn subscribe(self, p: Port) -> Port;
+    // xxx - we shouldn't be referring to the narrow object type Broadcast here,
+    // but its not clear where else to wire this
+    fn couple(self, b: Arc<Broadcast>) -> Result<(), Error>;
 }
 
 impl PubSub for Arc<Broadcast> {
@@ -44,6 +47,16 @@ impl PubSub for Arc<Broadcast> {
             broadcast: self.clone(),
             index,
         })
+    }
+
+    fn couple(self, b: Arc<Broadcast>) -> Result<(), Error> {
+        let index = self.count.fetch_add(1, Ordering::Acquire);
+        let p2 = b.subscribe(Arc::new(Ingress {
+            broadcast: self.clone(),
+            index,
+        }));
+        self.ports.lock().expect("lock").push((p2, index));
+        return Ok(());
     }
 }
 

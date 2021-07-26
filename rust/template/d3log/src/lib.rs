@@ -103,13 +103,11 @@ struct EvalPort {
 
 impl Transport for EvalPort {
     fn send(&self, b: Batch) {
-        println!(
-            "ep {} {}",
-            self.eval.clone().myself(),
-            RecordBatch::from(self.eval.clone(), b.clone())
-        );
         self.dispatch.send(b.clone());
-        self.s.lock().expect("lock").send(b.clone());
+        async_error!(
+            self.eval.clone(),
+            self.s.lock().expect("lock").send(b.clone())
+        );
 
         loop {
             match self.r.lock().expect("lock").try_recv() {
@@ -136,7 +134,7 @@ impl ThreadManager {
 }
 
 struct ThreadInstance {
-    rt: Arc<tokio::runtime::Runtime>,
+    // rt: Arc<tokio::runtime::Runtime>,
     eval: Evaluator,
     evalport: Port,
     new_evaluator: Arc<dyn Fn(Node, Port) -> Result<(Evaluator, Batch), Error> + Send + Sync>,
@@ -168,21 +166,29 @@ impl Transport for Arc<ThreadInstance> {
                 // Start instance if one is not already present
                 if thread_handle.is_none() {
                     let (tx, rx) = mpsc::channel();
-                    let new_self = self.clone();
+                    let self_clone = self.clone();
                     value.1 = Some(tx.clone());
+                    let eval_clone = self.eval.clone();
                     thread::spawn(move || {
                         let rt = Arc::new(Runtime::new().unwrap());
-                        let (_p, _init_batch, ep, _dispatch, forwarder) = async_error!(
-                            new_self.eval,
-                            start_instance(rt.clone(), new_self.new_evaluator.clone(), uuid)
+                        let (broadcast, _init_batch, ep, _dispatch, _forwarder) = async_error!(
+                            eval_clone.clone(),
+                            start_instance(rt.clone(), self_clone.new_evaluator.clone(), uuid)
                         );
                         ep.send(Batch::Value(
-                            new_self.accumulator.lock().expect("lock").clone(),
+                            self_clone.accumulator.lock().expect("lock").clone(),
                         ));
 
-                        //new_self.forwarder.register(uuid, ep.clone());
-                        forwarder
-                            .register(new_self.eval.clone().myself(), new_self.evalport.clone());
+                        async_error!(
+                            eval_clone.clone(),
+                            self_clone.broadcast.clone().couple(broadcast)
+                        );
+
+                        /* make transport here configurable
+                                                new_self.forwarder.register(uuid, ep.clone());
+                                                forwarder
+                                                  .register(new_self.eval.clone().myself(), new_self.evalport.clone());
+                        */
 
                         loop {
                             match rx.try_recv() {
@@ -230,15 +236,14 @@ pub fn start_instance(
     rt: Arc<Runtime>,
     new_evaluator: Arc<dyn Fn(Node, Port) -> Result<(Evaluator, Batch), Error> + Send + Sync>,
     uuid: u128,
-) -> Result<(Port, Batch, Port, Port, Arc<Forwarder>), Error> {
+) -> Result<(Arc<Broadcast>, Batch, Port, Port, Arc<Forwarder>), Error> {
     let broadcast = Broadcast::new();
     let (eval, init_batch) = new_evaluator(uuid, broadcast.clone())?;
     let dispatch = Arc::new(Dispatch::new(eval.clone()));
 
-    broadcast.clone().subscribe(dispatch.clone());
-    broadcast
-        .clone()
-        .subscribe(Arc::new(DebugPort { eval: eval.clone() }));
+    //    broadcast
+    //        .clone()
+    //        .subscribe(Arc::new(DebugPort { eval: eval.clone() }));
     let forwarder = Forwarder::new(eval.clone(), dispatch.clone(), broadcast.clone());
     let accu_batch = Arc::new(Mutex::new(DDValueBatch::new()));
 
@@ -255,7 +260,7 @@ pub fn start_instance(
     dispatch.clone().register(
         "d3_application::ThreadInstance",
         Arc::new(Arc::new(ThreadInstance {
-            rt: rt.clone(),
+            //            rt: rt.clone(),
             accumulator: accu_batch.clone(),
             eval: eval.clone(),
             evalport: eval_port.clone(),
@@ -280,6 +285,7 @@ pub fn start_instance(
     let dispatch_clone = dispatch.clone();
     let rt_clone = rt.clone();
 
+    // make transport here configurable
     let _handle = rt_clone.spawn(async move {
         async_error!(
             eval.clone(),
@@ -295,5 +301,6 @@ pub fn start_instance(
             .await
         );
     });
+
     Ok((broadcast, init_batch, eval_port, dispatch, forwarder))
 }
