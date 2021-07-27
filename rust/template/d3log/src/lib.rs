@@ -126,11 +126,6 @@ impl Transport for EvalPort {
             match self.r.lock().expect("lock").try_recv() {
                 Ok(x) => {
                     let out = async_error!(self.eval.clone(), self.eval.eval(x.clone()));
-                    println!(
-                        "out {} {}",
-                        self.eval.clone().myself(),
-                        RecordBatch::from(self.eval.clone(), out.clone()),
-                    );
                     self.forwarder.send(out.clone());
                 }
                 Err(_) => return,
@@ -205,6 +200,8 @@ impl Transport for Arc<ThreadInstance> {
                                 .clone()
                                 .couple(new_instance.broadcast.clone())
                         );
+
+                        async_error!(new_instance.eval.clone(), tcp_bind(new_instance.clone()));
 
                         /* make transport here configurable
                         new_self.forwarder.register(uuid, ep.clone());
@@ -307,8 +304,6 @@ impl Instance {
         instance
             .eval_port
             .send(fact!(d3_application::Myself, me => uuid.into_record()));
-
-        tcp_bind(instance.clone())?;
 
         Ok(instance)
     }

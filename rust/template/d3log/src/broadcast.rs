@@ -80,10 +80,7 @@ impl PubSub for Arc<Broadcast> {
             broadcast: self.clone(),
             index,
         }));
-        self.ports
-            .lock()
-            .expect("lock")
-            .push((Trace::new(self.id, "bfor".to_string(), p2), index));
+        self.ports.lock().expect("lock").push((p2, index));
         return Ok(());
     }
 }
@@ -95,7 +92,6 @@ impl Ingress {
 impl Transport for Ingress {
     fn send(&self, b: Batch) {
         let ports = { &*self.broadcast.ports.lock().expect("lock").clone() };
-        println!("sai {}{}", self.broadcast.id, b.clone());
         for (port, index) in ports {
             if *index != self.index {
                 port.send(b.clone())
@@ -108,12 +104,6 @@ impl Transport for Broadcast {
     fn send(&self, b: Batch) {
         // We clone this map to have a read-only copy, else, we'd open up the possiblity of a
         // deadlock, if this `send` forms a cycle.
-        println!(
-            "global broadcast {}{}{}",
-            self.id,
-            b.clone(),
-            self.ports.lock().expect("lock").len()
-        );
         let ports = { &*self.ports.lock().expect("lock").clone() };
         for (port, _) in ports {
             port.send(b.clone())

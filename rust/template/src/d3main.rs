@@ -1,7 +1,7 @@
 use crate::{relid2name, relval_from_record, Relations, UpdateSerializer};
 use d3log::{
-    ddvalue_batch::DDValueBatch, error::Error, fact, record_batch::RecordBatch, Batch, Evaluator,
-    EvaluatorTrait, Instance, Node, Port, Transport,
+    ddvalue_batch::DDValueBatch, error::Error, fact, record_batch::RecordBatch,
+    tcp_network::tcp_bind, Batch, Evaluator, EvaluatorTrait, Instance, Node, Port, Transport,
 };
 use differential_datalog::program::config::{Config, ProfilingConfig};
 
@@ -243,6 +243,7 @@ pub fn start_d3log() -> Result<(), Error> {
     let rt = Arc::new(Runtime::new()?);
     let instance = Instance::new(rt.clone(), Arc::new(d), uuid)?;
 
+    tcp_bind(instance.clone())?;
     if is_parent {
         let debug_uuid = u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>());
         // batch union?

@@ -86,7 +86,6 @@ impl Forwarder {
     }
 
     pub fn register(&self, n: Node, p: Port) {
-        println!("register {} {}", self.eval.clone().myself(), n);
         // overwrite warning?
         let entry = self.lookup(n);
         {

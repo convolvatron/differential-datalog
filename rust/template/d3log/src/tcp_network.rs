@@ -34,12 +34,6 @@ impl Transport for AddressListener {
         for (_r, v, _w) in &RecordBatch::from(self.instance.eval.clone(), b) {
             if let Some(destination) = v.get_struct_field("destination") {
                 if let Some(location) = v.get_struct_field("location") {
-                    println!(
-                        "heard tcp adv {} {} {}",
-                        self.instance.eval.clone().myself(),
-                        destination.clone(),
-                        location.clone()
-                    );
                     match destination {
                         // what are the unused fields?
                         Record::String(string) => {
@@ -94,7 +88,6 @@ pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
     let clone = instance.clone();
     instance.rt.spawn(async move {
         // xxx get external  ip address
-        println!("calling bind {}", clone.uuid);
         let listener = async_error!(clone.eval.clone(), TcpListener::bind("127.0.0.1:0").await);
         let addr = listener.local_addr().unwrap();
 
