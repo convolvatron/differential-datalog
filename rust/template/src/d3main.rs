@@ -259,7 +259,7 @@ pub fn start_d3log() -> Result<(), Error> {
     // find the ddlog ticket against and reference here
     if is_parent {
         rt.spawn(async move {
-            instance.dispatch.clone().send(instance.init_batch);
+            instance.dispatch.clone().send(instance.init_batch.clone());
         });
     }
     //    rt.shutdown();
