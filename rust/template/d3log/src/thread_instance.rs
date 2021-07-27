@@ -6,7 +6,7 @@ use crate::{
 use differential_datalog::record::*;
 use std::borrow::Cow;
 use std::collections::HashMap;
-use std::sync::mpsc::{self, Sender, TryRecvError};
+use std::sync::mpsc::{self, Sender};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use tokio::runtime::Runtime;
@@ -99,14 +99,10 @@ impl Transport for Arc<ThreadInstance> {
                         .register(new_self.eval.clone().myself(), new_self.evalport.clone());
                          */
 
-                        loop {
-                            match rx.try_recv() {
-                                Ok(_) | Err(TryRecvError::Disconnected) => {
-                                    println!("Terminating.");
-                                    break;
-                                }
-                                Err(TryRecvError::Empty) => {}
-                            }
+                        // rx.recv blocks
+                        match rx.recv() {
+                            Ok(_) => println!("Terminating thread!"),
+                            Err(_) => println!("Error receving msg! Terminating thread!"),
                         }
                     });
                 }
