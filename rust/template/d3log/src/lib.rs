@@ -48,6 +48,18 @@ pub trait EvaluatorTrait {
     fn deserialize_batch(&self, s: Vec<u8>) -> Result<DDValueBatch, Error>;
 }
 
+#[derive(Clone)]
+pub struct Instance {
+    pub uuid: Node,
+    pub broadcast: Arc<Broadcast>,
+    pub init_batch: Batch,
+    pub eval_port: Port,
+    pub eval: Evaluator,
+    pub dispatch: Arc<Dispatch>,
+    pub forwarder: Arc<Forwarder>,
+    pub rt: Arc<tokio::runtime::Runtime>,
+}
+
 pub type Evaluator = Arc<(dyn EvaluatorTrait + Send + Sync)>;
 
 #[derive(Clone)]
@@ -92,6 +104,7 @@ impl Transport for AccumulatePort {
     }
 }
 
+// shouldn't evaluator just implement Transport?
 struct EvalPort {
     eval: Evaluator,
     forwarder: Port,
@@ -113,6 +126,11 @@ impl Transport for EvalPort {
             match self.r.lock().expect("lock").try_recv() {
                 Ok(x) => {
                     let out = async_error!(self.eval.clone(), self.eval.eval(x.clone()));
+                    println!(
+                        "out {} {}",
+                        self.eval.clone().myself(),
+                        RecordBatch::from(self.eval.clone(), out.clone()),
+                    );
                     self.forwarder.send(out.clone());
                 }
                 Err(_) => return,
@@ -134,14 +152,11 @@ impl ThreadManager {
 }
 
 struct ThreadInstance {
-    // rt: Arc<tokio::runtime::Runtime>,
-    eval: Evaluator,
-    evalport: Port,
+    instance: Arc<Instance>,
     new_evaluator: Arc<dyn Fn(Node, Port) -> Result<(Evaluator, Batch), Error> + Send + Sync>,
-    forwarder: Arc<Forwarder>,
-    broadcast: Arc<Broadcast>,
     // since all kinds of children will need a copy of the management state,
-    // consider generalizing
+    // consider generalizing. this needs to move to the broadcaster for atomicity
+    // reasons anyways
     accumulator: Arc<Mutex<DDValueBatch>>,
     manager: Arc<Mutex<ThreadManager>>,
 }
@@ -150,10 +165,10 @@ struct ThreadInstance {
 // xxx handle deletes
 impl Transport for Arc<ThreadInstance> {
     fn send(&self, b: Batch) {
-        for (_, p, weight) in &RecordBatch::from(self.eval.clone(), b) {
+        for (_, p, weight) in &RecordBatch::from(self.instance.eval.clone(), b) {
             // async_error variant for Some
             let uuid_record = p.get_struct_field("id").unwrap();
-            let uuid = async_error!(self.clone().eval.clone(), Uuid::from_record(uuid_record));
+            let uuid = async_error!(self.instance.eval.clone(), Uuid::from_record(uuid_record));
 
             let mut manager = self.manager.lock().expect("lock");
             let value = manager
@@ -168,27 +183,34 @@ impl Transport for Arc<ThreadInstance> {
                     let (tx, rx) = mpsc::channel();
                     let self_clone = self.clone();
                     value.1 = Some(tx.clone());
-                    let eval_clone = self.eval.clone();
                     thread::spawn(move || {
-                        let rt = Arc::new(Runtime::new().unwrap());
-                        let (broadcast, _init_batch, ep, _dispatch, _forwarder) = async_error!(
-                            eval_clone.clone(),
-                            start_instance(rt.clone(), self_clone.new_evaluator.clone(), uuid)
+                        let new_instance = async_error!(
+                            self_clone.instance.eval.clone(),
+                            // make a new runtime?
+                            Instance::new(
+                                Arc::new(Runtime::new().unwrap()),
+                                self_clone.new_evaluator.clone(),
+                                uuid
+                            )
                         );
-                        ep.send(Batch::Value(
+                        new_instance.eval_port.send(Batch::Value(
                             self_clone.accumulator.lock().expect("lock").clone(),
                         ));
 
                         async_error!(
-                            eval_clone.clone(),
-                            self_clone.broadcast.clone().couple(broadcast)
+                            self_clone.instance.eval.clone(),
+                            self_clone
+                                .instance
+                                .broadcast
+                                .clone()
+                                .couple(new_instance.broadcast.clone())
                         );
 
                         /* make transport here configurable
-                                                new_self.forwarder.register(uuid, ep.clone());
-                                                forwarder
-                                                  .register(new_self.eval.clone().myself(), new_self.evalport.clone());
-                        */
+                        new_self.forwarder.register(uuid, ep.clone());
+                        forwarder
+                        .register(new_self.eval.clone().myself(), new_self.evalport.clone());
+                         */
 
                         loop {
                             match rx.try_recv() {
@@ -211,11 +233,13 @@ impl Transport for Arc<ThreadInstance> {
             let threads: u64 = 1;
             let bytes: u64 = 1;
 
-            self.broadcast.send(fact!(d3_application::InstanceStatus,
-                                      time => self.eval.clone().now().into_record(),
-                                      id => uuid.into_record(),
-                                      memory_bytes => bytes.into_record(),
-                                      threads => threads.into_record()));
+            self.instance
+                .broadcast
+                .send(fact!(d3_application::InstanceStatus,
+                            time => self.instance.eval.clone().now().into_record(),
+                            id => uuid.into_record(),
+                            memory_bytes => bytes.into_record(),
+                            threads => threads.into_record()));
         }
     }
 }
@@ -232,75 +256,60 @@ impl Transport for DebugPort {
     }
 }
 
-pub fn start_instance(
-    rt: Arc<Runtime>,
-    new_evaluator: Arc<dyn Fn(Node, Port) -> Result<(Evaluator, Batch), Error> + Send + Sync>,
-    uuid: u128,
-) -> Result<(Arc<Broadcast>, Batch, Port, Port, Arc<Forwarder>), Error> {
-    let broadcast = Broadcast::new();
-    let (eval, init_batch) = new_evaluator(uuid, broadcast.clone())?;
-    let dispatch = Arc::new(Dispatch::new(eval.clone()));
+impl Instance {
+    pub fn new(
+        rt: Arc<Runtime>,
+        new_evaluator: Arc<dyn Fn(Node, Port) -> Result<(Evaluator, Batch), Error> + Send + Sync>,
+        uuid: u128,
+    ) -> Result<Arc<Instance>, Error> {
+        let broadcast = Broadcast::new(uuid);
+        let (eval, init_batch) = new_evaluator(uuid, broadcast.clone())?;
+        let dispatch = Arc::new(Dispatch::new(eval.clone()));
+        let (esend, erecv) = channel();
+        let forwarder = Forwarder::new(eval.clone(), dispatch.clone(), broadcast.clone());
 
-    //    broadcast
-    //        .clone()
-    //        .subscribe(Arc::new(DebugPort { eval: eval.clone() }));
-    let forwarder = Forwarder::new(eval.clone(), dispatch.clone(), broadcast.clone());
-    let accu_batch = Arc::new(Mutex::new(DDValueBatch::new()));
-
-    let (esend, erecv) = channel();
-    // shouldn't evaluator just implement Transport?
-    let eval_port = Arc::new(EvalPort {
-        forwarder: forwarder.clone(),
-        dispatch: dispatch.clone(),
-        eval: eval.clone(),
-        s: Arc::new(Mutex::new(esend)),
-        r: Arc::new(Mutex::new(erecv)),
-    });
-
-    dispatch.clone().register(
-        "d3_application::ThreadInstance",
-        Arc::new(Arc::new(ThreadInstance {
-            //            rt: rt.clone(),
-            accumulator: accu_batch.clone(),
-            eval: eval.clone(),
-            evalport: eval_port.clone(),
+        let eval_port = Arc::new(EvalPort {
             forwarder: forwarder.clone(),
-            new_evaluator: new_evaluator.clone(),
+            dispatch: dispatch.clone(),
+            eval: eval.clone(),
+            s: Arc::new(Mutex::new(esend)),
+            r: Arc::new(Mutex::new(erecv)),
+        });
+
+        let instance = Arc::new(Instance {
+            uuid,
             broadcast: broadcast.clone(),
-            manager: Arc::new(Mutex::new(ThreadManager::new())),
-        })),
-    )?;
+            eval: eval.clone(),
+            eval_port: eval_port.clone(),
+            init_batch: init_batch.clone(),
+            dispatch: dispatch.clone(),
+            forwarder,
+            rt: rt.clone(),
+        });
 
-    broadcast.clone().subscribe(eval_port.clone());
-    broadcast.clone().subscribe(Arc::new(AccumulatePort {
-        eval: eval.clone(),
-        b: accu_batch.clone(),
-    }));
+        let accu_batch = Arc::new(Mutex::new(DDValueBatch::new()));
+        dispatch.clone().register(
+            "d3_application::ThreadInstance",
+            Arc::new(Arc::new(ThreadInstance {
+                instance: instance.clone(),
+                accumulator: accu_batch.clone(),
+                new_evaluator: new_evaluator.clone(),
+                manager: Arc::new(Mutex::new(ThreadManager::new())),
+            })),
+        )?;
 
-    eval_port.send(fact!(d3_application::Myself, me => uuid.into_record()));
+        broadcast.clone().subscribe(instance.eval_port.clone());
+        broadcast.clone().subscribe(Arc::new(AccumulatePort {
+            eval: eval.clone(),
+            b: accu_batch.clone(),
+        }));
 
-    let management_clone = broadcast.clone();
-    let forwarder_clone = forwarder.clone();
-    let eval_clone = eval.clone();
-    let dispatch_clone = dispatch.clone();
-    let rt_clone = rt.clone();
+        instance
+            .eval_port
+            .send(fact!(d3_application::Myself, me => uuid.into_record()));
 
-    // make transport here configurable
-    let _handle = rt_clone.spawn(async move {
-        async_error!(
-            eval.clone(),
-            tcp_bind(
-                dispatch_clone,
-                uuid,
-                forwarder_clone,
-                management_clone.clone(),
-                eval_clone.clone(),
-                management_clone.clone(),
-                rt.clone(),
-            )
-            .await
-        );
-    });
+        tcp_bind(instance.clone())?;
 
-    Ok((broadcast, init_batch, eval_port, dispatch, forwarder))
+        Ok(instance)
+    }
 }

@@ -17,7 +17,7 @@ use tokio::{
 
 use crate::{
     async_error, fact, function, json_framer::JsonFramer, nega_fact, send_error, Batch,
-    DDValueBatch, Dispatch, Dred, Error, Evaluator, Forwarder, Node, Port, RecordBatch, Transport,
+    DDValueBatch, Dred, Error, Evaluator, Instance, Port, RecordBatch, Transport,
 };
 
 use differential_datalog::record::*;
@@ -26,46 +26,45 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 
 struct AddressListener {
-    eval: Evaluator,
-    forwarder: Arc<Forwarder>,
-    management: Port,
-    rt: Arc<Runtime>,
+    instance: Arc<Instance>,
 }
 
 impl Transport for AddressListener {
     fn send(&self, b: Batch) {
-        for (_r, v, _w) in &RecordBatch::from(self.eval.clone(), b) {
+        for (_r, v, _w) in &RecordBatch::from(self.instance.eval.clone(), b) {
             if let Some(destination) = v.get_struct_field("destination") {
                 if let Some(location) = v.get_struct_field("location") {
                     println!(
-                        "address adv {} {} {}",
-                        self.eval.clone().myself(),
-                        destination,
-                        location
+                        "heard tcp adv {} {} {}",
+                        self.instance.eval.clone().myself(),
+                        destination.clone(),
+                        location.clone()
                     );
                     match destination {
                         // what are the unused fields?
                         Record::String(string) => {
                             let address = string.parse();
-                            let loc: u128 =
-                                async_error!(self.eval.clone(), FromRecord::from_record(&location));
+                            let loc: u128 = async_error!(
+                                self.instance.eval.clone(),
+                                FromRecord::from_record(&location)
+                            );
                             // we add an entry to forward this nid to this tcp address
                             let peer = Arc::new(TcpPeer {
-                                management: self.management.clone(),
-                                eval: self.eval.clone(),
+                                management: self.instance.broadcast.clone(),
+                                eval: self.instance.eval.clone(),
                                 tcp_inner: Arc::new(Mutex::new(TcpPeerInternal {
-                                    eval: self.eval.clone(),
+                                    eval: self.instance.eval.clone(),
                                     stream: None,
                                     address: address.unwrap(), //async error
                                                                // sends: Vec::new(),
                                 })),
-                                rt: self.rt.clone(),
+                                rt: self.instance.rt.clone(),
                             });
-                            self.forwarder.register(loc, peer);
+                            self.instance.forwarder.register(loc, peer);
                             return;
                         }
                         _ => async_error!(
-                            self.eval.clone(),
+                            self.instance.eval.clone(),
                             Err(Error::new(format!(
                                 "bad tcp address {}",
                                 destination.to_string()
@@ -76,92 +75,88 @@ impl Transport for AddressListener {
             }
 
             async_error!(
-                self.eval.clone(),
+                self.instance.eval.clone(),
                 Err(Error::new("ill formed process".to_string()))
             );
         }
     }
 }
 
-pub async fn tcp_bind(
-    dispatch: Arc<Dispatch>,
-    me: Node,
-    forwarder: Arc<Forwarder>,
-    data: Port,
-    eval: Evaluator, // evaluator is a data port, or a management port?
-    management: Port,
-    rt: Arc<Runtime>,
-) -> Result<(), Error> {
-    dispatch.register(
+// associated? to?
+pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
+    instance.dispatch.register(
         "d3_application::TcpAddress",
         Arc::new(AddressListener {
-            eval: eval.clone(),
-            forwarder,
-            management: management.clone(),
-            rt: rt.clone(),
+            instance: instance.clone(),
         }),
     )?;
 
-    // xxx get external  ip address
-    let listener = TcpListener::bind("127.0.0.1:0").await?;
-    let addr = listener.local_addr().unwrap();
+    let clone = instance.clone();
+    instance.rt.spawn(async move {
+        // xxx get external  ip address
+        println!("calling bind {}", clone.uuid);
+        let listener = async_error!(clone.eval.clone(), TcpListener::bind("127.0.0.1:0").await);
+        let addr = listener.local_addr().unwrap();
 
-    management.send(fact!(
-        d3_application::TcpAddress,
-        location => me.into_record(),
-        destination => addr.to_string().into_record()));
+        clone.broadcast.send(fact!(
+                d3_application::TcpAddress,
+                location => clone.uuid.into_record(),
+                destination => addr.to_string().into_record()));
 
-    let eclone = eval.clone();
-    loop {
-        // exchange ids
-        let (socket, _a) = listener.accept().await?;
+        let clone = clone.clone();
+        loop {
+            // exchange ids..we dont need the initiators identity because this is all feed forward, but
+            // it helps track whats going on
 
-        management.clone().send(fact!(
-            d3_application::ConnectionStatus,
-            time => eclone.clone().now().into_record(),
-            me => me.into_record(),
-            them => me.into_record()));
+            let (socket, _a) = async_error!(clone.eval.clone(), listener.accept().await);
 
-        // well, this is a huge .. something. if i just use the socket
-        // in the async move block, it actually gets dropped
-        let sclone = Arc::new(Mutex::new(socket));
-        let dclone = data.clone();
-        let eclone = eval.clone();
-        let mclone = management.clone();
-        let (dred, dred_port) = Dred::new(eclone.clone(), dclone);
+            clone.clone().broadcast.clone().send(fact!(
+                    d3_application::ConnectionStatus,
+                    time => clone.eval.now().into_record(),
+                    me => clone.uuid.into_record(),
+                    them => clone.uuid.into_record()));
 
-        rt.spawn(async move {
-            let mut jf = JsonFramer::new();
-            let mut buffer = [0; 64];
-            loop {
-                // xxx - remove socket from peer table on error and post notification
-                match sclone.lock().await.read(&mut buffer).await {
-                    Ok(bytes_input) => {
-                        for i in jf
-                            .append(&buffer[0..bytes_input])
-                            .expect("json coding error")
-                        {
-                            dred_port.send(Batch::Value(async_error!(
-                                eclone.clone(),
-                                eclone.clone().deserialize_batch(i)
-                            )));
+            // well, this is a huge .. something. if i just use the socket
+            // in the async move block, it actually gets dropped
+            let sclone = Arc::new(Mutex::new(socket));
+
+            let (dred, dred_port) = Dred::new(clone.clone().eval.clone(), clone.eval_port.clone());
+
+            let clone2 = clone.clone();
+            clone.rt.spawn(async move {
+                let mut jf = JsonFramer::new();
+                let mut buffer = [0; 64];
+                loop {
+                    // xxx - remove socket from peer table on error and post notification
+                    match sclone.lock().await.read(&mut buffer).await {
+                        Ok(bytes_input) => {
+                            for i in jf
+                                .append(&buffer[0..bytes_input])
+                                .expect("json coding error")
+                            {
+                                dred_port.send(Batch::Value(async_error!(
+                                    clone2.eval.clone(),
+                                    clone2.eval.clone().deserialize_batch(i)
+                                )));
+                            }
+                        }
+                        Err(_) => {
+                            // call Dred close to retract all the facts
+                            dred.close();
+                            // Retract the connection status fact too!
+                            // good! maybe we can just keep a copy of the original assertion?
+                            clone2.broadcast.send(nega_fact!(
+                                    d3_application::ConnectionStatus,
+                                    time => clone2.clone().eval.clone().now().into_record(),
+                                    me => clone2.clone().uuid.into_record(),
+                                    them => clone2.clone().uuid.into_record()));
                         }
                     }
-                    Err(_) => {
-                        // call Dred close to retract all the facts
-                        dred.close();
-                        // Retract the connection status fact too!
-                        // good! maybe we can just keep a copy of the original assertion?
-                        mclone.send(nega_fact!(
-                            d3_application::ConnectionStatus,
-                            time => eclone.clone().now().into_record(),
-                            me => me.into_record(),
-                            them => me.into_record()));
-                    }
                 }
-            }
-        });
-    }
+            });
+        }
+    });
+    Ok(())
 }
 
 struct TcpPeerInternal {

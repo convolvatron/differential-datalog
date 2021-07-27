@@ -1,7 +1,7 @@
 use crate::{relid2name, relval_from_record, Relations, UpdateSerializer};
 use d3log::{
-    ddvalue_batch::DDValueBatch, error::Error, fact, record_batch::RecordBatch, start_instance,
-    Batch, Evaluator, EvaluatorTrait, Node, Port, Transport,
+    ddvalue_batch::DDValueBatch, error::Error, fact, record_batch::RecordBatch, Batch, Evaluator,
+    EvaluatorTrait, Instance, Node, Port, Transport,
 };
 use differential_datalog::program::config::{Config, ProfilingConfig};
 
@@ -241,16 +241,16 @@ pub fn start_d3log() -> Result<(), Error> {
         move |id: u128, error: Port| -> Result<(Evaluator, Batch), Error> { D3::new(id, error) };
 
     let rt = Arc::new(Runtime::new()?);
-    let (management, init_batch, _eval_port, dispatch, _forwarder) =
-        start_instance(rt.clone(), Arc::new(d), uuid)?;
+    let instance = Instance::new(rt.clone(), Arc::new(d), uuid)?;
 
     if is_parent {
         let debug_uuid = u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>());
         // batch union?
-        management
+        instance
+            .broadcast
             .clone()
             .send(fact!(d3_application::Stdout, target=>debug_uuid.into_record()));
-        management.clone().send(
+        instance.broadcast.clone().send(
             fact!(d3_application::Forward, target=>debug_uuid.into_record(), intermediate => uuid.into_record()),
         );
     }
@@ -259,7 +259,7 @@ pub fn start_d3log() -> Result<(), Error> {
     // find the ddlog ticket against and reference here
     if is_parent {
         rt.spawn(async move {
-            dispatch.clone().send(init_batch);
+            instance.dispatch.clone().send(instance.init_batch);
         });
     }
     //    rt.shutdown();

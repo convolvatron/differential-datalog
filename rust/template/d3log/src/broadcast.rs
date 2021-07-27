@@ -3,7 +3,7 @@
 // order to maintain a consistent spanning tree (and a strategy for avoiding storms for temporariliy
 // inconsistent topologies
 
-use crate::{Batch, Error, Port, Transport};
+use crate::{Batch, Error, Node, Port, Transport};
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -15,13 +15,15 @@ pub struct Ingress {
 
 #[derive(Clone, Default)]
 pub struct Broadcast {
+    id: Node,
     count: Arc<AtomicUsize>,
-    ports: Arc<Mutex<Vec<(Port, usize)>>>,
+    pub ports: Arc<Mutex<Vec<(Port, usize)>>>,
 }
 
 impl Broadcast {
-    pub fn new() -> Arc<Broadcast> {
+    pub fn new(id: Node) -> Arc<Broadcast> {
         Arc::new(Broadcast {
+            id,
             count: Arc::new(AtomicUsize::new(0)),
             ports: Arc::new(Mutex::new(Vec::new())),
         })
@@ -36,6 +38,29 @@ pub trait PubSub {
     // xxx - we shouldn't be referring to the narrow object type Broadcast here,
     // but its not clear where else to wire this
     fn couple(self, b: Arc<Broadcast>) -> Result<(), Error>;
+}
+
+struct Trace {
+    uuid: Node,
+    head: String,
+    p: Port,
+}
+
+impl Trace {
+    fn new(uuid: Node, head: String, p: Port) -> Port {
+        Arc::new(Trace {
+            uuid,
+            head,
+            p: p.clone(),
+        })
+    }
+}
+
+impl Transport for Trace {
+    fn send(&self, b: Batch) {
+        println!("{} {} {} ", self.uuid, self.head, b);
+        self.p.clone().send(b);
+    }
 }
 
 impl PubSub for Arc<Broadcast> {
@@ -55,7 +80,10 @@ impl PubSub for Arc<Broadcast> {
             broadcast: self.clone(),
             index,
         }));
-        self.ports.lock().expect("lock").push((p2, index));
+        self.ports
+            .lock()
+            .expect("lock")
+            .push((Trace::new(self.id, "bfor".to_string(), p2), index));
         return Ok(());
     }
 }
@@ -67,6 +95,7 @@ impl Ingress {
 impl Transport for Ingress {
     fn send(&self, b: Batch) {
         let ports = { &*self.broadcast.ports.lock().expect("lock").clone() };
+        println!("sai {}{}", self.broadcast.id, b.clone());
         for (port, index) in ports {
             if *index != self.index {
                 port.send(b.clone())
@@ -79,6 +108,12 @@ impl Transport for Broadcast {
     fn send(&self, b: Batch) {
         // We clone this map to have a read-only copy, else, we'd open up the possiblity of a
         // deadlock, if this `send` forms a cycle.
+        println!(
+            "global broadcast {}{}{}",
+            self.id,
+            b.clone(),
+            self.ports.lock().expect("lock").len()
+        );
         let ports = { &*self.ports.lock().expect("lock").clone() };
         for (port, _) in ports {
             port.send(b.clone())
