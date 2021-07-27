@@ -263,8 +263,7 @@ pub fn start_d3log() -> Result<(), Error> {
             instance.dispatch.clone().send(instance.init_batch.clone());
         });
     }
-    //    rt.shutdown();
-    //rt.block_on(instance_future)?;
+
     loop {
         std::thread::park();
     }

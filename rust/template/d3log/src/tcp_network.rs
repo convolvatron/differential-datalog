@@ -90,7 +90,7 @@ pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
         // xxx get external  ip address
         let listener = async_error!(clone.eval.clone(), TcpListener::bind("127.0.0.1:0").await);
         let addr = listener.local_addr().unwrap();
-
+        println!("Sending binding");
         clone.broadcast.send(fact!(
                 d3_application::TcpAddress,
                 location => clone.uuid.into_record(),

@@ -87,13 +87,14 @@ impl Forwarder {
 
     pub fn register(&self, n: Node, p: Port) {
         // overwrite warning?
+        println!("register {} {}", self.eval.clone().myself(), n);
+
         let entry = self.lookup(n);
         {
             entry.lock().expect("lock").port = Some(p.clone());
         }
 
         while let Some(b) = { entry.lock().expect("lock").batches.pop_front() } {
-            println!("dequeue batch {}", b.clone());
             p.clone().send(b);
         }
         while let Some(r) = { entry.lock().expect("lock").registrations.pop_front() } {
