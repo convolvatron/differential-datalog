@@ -3,7 +3,7 @@
 // order to maintain a consistent spanning tree (and a strategy for avoiding storms for temporariliy
 // inconsistent topologies
 
-use crate::{Batch, Error, Node, Port, Transport};
+use crate::{Batch, DDValueBatch, Error, Node, Port, Transport};
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -16,17 +16,20 @@ pub struct Ingress {
 #[derive(Clone, Default)]
 pub struct Broadcast {
     id: Node,
+    accumulator: Arc<Mutex<DDValueBatch>>,
     count: Arc<AtomicUsize>,
     pub ports: Arc<Mutex<Vec<(Port, usize)>>>,
 }
 
 impl Broadcast {
-    pub fn new(id: Node) -> Arc<Broadcast> {
-        Arc::new(Broadcast {
+    pub fn new(id: Node, accumulator: Arc<Mutex<DDValueBatch>>) -> Arc<Broadcast> {
+        let b = Arc::new(Broadcast {
             id,
+            accumulator,
             count: Arc::new(AtomicUsize::new(0)),
             ports: Arc::new(Mutex::new(Vec::new())),
-        })
+        });
+        b
     }
 }
 
@@ -40,34 +43,15 @@ pub trait PubSub {
     fn couple(self, b: Arc<Broadcast>) -> Result<(), Error>;
 }
 
-struct Trace {
-    uuid: Node,
-    head: String,
-    p: Port,
-}
-
-impl Trace {
-    fn new(uuid: Node, head: String, p: Port) -> Port {
-        Arc::new(Trace {
-            uuid,
-            head,
-            p: p.clone(),
-        })
-    }
-}
-
-impl Transport for Trace {
-    fn send(&self, b: Batch) {
-        println!("{} {} {} ", self.uuid, self.head, b);
-        self.p.clone().send(b);
-    }
-}
-
 impl PubSub for Arc<Broadcast> {
     fn subscribe(self, p: Port) -> Port {
         let index = self.count.fetch_add(1, Ordering::Acquire);
         let mut ports = self.ports.lock().expect("lock ports");
-        ports.push((p, index));
+        ports.push((p.clone(), index));
+
+        p.clone()
+            .send(Batch::Value(self.accumulator.lock().expect("lock").clone()));
+
         Arc::new(Ingress {
             broadcast: self.clone(),
             index,
@@ -80,8 +64,10 @@ impl PubSub for Arc<Broadcast> {
             broadcast: self.clone(),
             index,
         }));
+        p2.clone()
+            .send(Batch::Value(self.accumulator.lock().expect("lock").clone()));
         self.ports.lock().expect("lock").push((p2, index));
-        return Ok(());
+        Ok(())
     }
 }
 

@@ -120,6 +120,29 @@ impl Transport for EvalPort {
     }
 }
 
+struct Trace {
+    uuid: Node,
+    head: String,
+    p: Port,
+}
+
+impl Trace {
+    fn new(uuid: Node, head: String, p: Port) -> Port {
+        Arc::new(Trace {
+            uuid,
+            head,
+            p: p.clone(),
+        })
+    }
+}
+
+impl Transport for Trace {
+    fn send(&self, b: Batch) {
+        println!("{} {} {} ", self.uuid, self.head, b);
+        self.p.clone().send(b);
+    }
+}
+
 struct DebugPort {
     eval: Evaluator,
 }
@@ -132,17 +155,36 @@ impl Transport for DebugPort {
     }
 }
 
+struct AccumulatePort {
+    eval: Evaluator,
+    accumulator: Arc<Mutex<DDValueBatch>>,
+}
+
+impl Transport for AccumulatePort {
+    fn send(&self, b: Batch) {
+        for (r, f, w) in &DDValueBatch::from(&(*self.eval), b).expect("iterator") {
+            self.accumulator.lock().expect("lock").insert(r, f, w);
+        }
+    }
+}
+
 impl Instance {
     pub fn new(
         rt: Arc<Runtime>,
         new_evaluator: Arc<dyn Fn(Node, Port) -> Result<(Evaluator, Batch), Error> + Send + Sync>,
         uuid: u128,
     ) -> Result<Arc<Instance>, Error> {
-        let broadcast = Broadcast::new(uuid);
+        let accumulator = Arc::new(Mutex::new(DDValueBatch::new()));
+        let broadcast = Broadcast::new(uuid, accumulator.clone());
         let (eval, init_batch) = new_evaluator(uuid, broadcast.clone())?;
         let dispatch = Arc::new(Dispatch::new(eval.clone()));
         let (esend, erecv) = channel();
         let forwarder = Forwarder::new(eval.clone(), dispatch.clone(), broadcast.clone());
+
+        broadcast.clone().subscribe(Arc::new(AccumulatePort {
+            accumulator,
+            eval: eval.clone(),
+        }));
 
         let eval_port = Arc::new(EvalPort {
             forwarder: forwarder.clone(),

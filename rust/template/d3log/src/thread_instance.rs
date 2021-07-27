@@ -1,7 +1,7 @@
 // support creating instances (of the same program) on a separate thread in the same address space
 use crate::{
-    async_error, broadcast::PubSub, fact, function, send_error, tcp_bind, Batch, DDValueBatch,
-    Error, Evaluator, Instance, Node, Port, RecordBatch, Transport,
+    async_error, broadcast::PubSub, fact, function, send_error, tcp_bind, Batch, Error, Evaluator,
+    Instance, Node, Port, RecordBatch, Transport,
 };
 use differential_datalog::record::*;
 use std::borrow::Cow;
@@ -10,19 +10,6 @@ use std::sync::mpsc::{self, Sender, TryRecvError};
 use std::sync::{Arc, Mutex};
 use std::thread;
 use tokio::runtime::Runtime;
-
-struct AccumulatePort {
-    eval: Evaluator,
-    b: Arc<Mutex<DDValueBatch>>,
-}
-
-impl Transport for AccumulatePort {
-    fn send(&self, b: Batch) {
-        for (r, f, w) in &DDValueBatch::from(&(*self.eval), b).expect("iterator") {
-            self.b.lock().expect("lock").insert(r, f, w);
-        }
-    }
-}
 
 pub struct ThreadManager {
     threads: HashMap<Node, (isize, Option<Sender<()>>)>,
@@ -42,7 +29,6 @@ pub struct ThreadInstance {
     // since all kinds of children will need a copy of the management state,
     // consider generalizing. this needs to move to the broadcaster for atomicity
     // reasons anyways
-    accumulator: Arc<Mutex<DDValueBatch>>,
     manager: Arc<Mutex<ThreadManager>>,
 }
 
@@ -78,9 +64,6 @@ impl Transport for Arc<ThreadInstance> {
                                 uuid
                             )
                         );
-                        new_instance.eval_port.send(Batch::Value(
-                            self_clone.accumulator.lock().expect("lock").clone(),
-                        ));
 
                         async_error!(
                             self_clone.instance.eval.clone(),
@@ -136,22 +119,10 @@ impl ThreadInstance {
         instance: Arc<Instance>,
         new_evaluator: Arc<dyn Fn(Node, Port) -> Result<(Evaluator, Batch), Error> + Send + Sync>,
     ) -> Result<(), Error> {
-        let accu_batch = Arc::new(Mutex::new(DDValueBatch::new()));
-
-        instance
-            .clone()
-            .broadcast
-            .clone()
-            .subscribe(Arc::new(AccumulatePort {
-                eval: instance.eval.clone(),
-                b: accu_batch.clone(),
-            }));
-
         instance.dispatch.clone().register(
             "d3_application::ThreadInstance",
             Arc::new(Arc::new(ThreadInstance {
                 instance: instance.clone(),
-                accumulator: accu_batch.clone(),
                 new_evaluator: new_evaluator.clone(),
                 manager: Arc::new(Mutex::new(ThreadManager::new())),
             })),
