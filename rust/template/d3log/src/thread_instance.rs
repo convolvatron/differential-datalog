@@ -23,6 +23,8 @@ impl ThreadManager {
     }
 }
 
+// ThreadInstance is a handler for a management realtion that starts up new instances (of the current hddlog program)
+// as a separate thread in the same process.
 pub struct ThreadInstance {
     instance: Arc<Instance>,
     new_evaluator: Arc<dyn Fn(Node, Port) -> Result<(Evaluator, Batch), Error> + Send + Sync>,
@@ -32,8 +34,6 @@ pub struct ThreadInstance {
     manager: Arc<Mutex<ThreadManager>>,
 }
 
-// we're just throwing this into the same runtime - do we want/need scheduling isolation?
-// xxx handle deletes
 impl Transport for Arc<ThreadInstance> {
     fn send(&self, b: Batch) {
         for (_, p, weight) in &RecordBatch::from(self.instance.eval.clone(), b) {
@@ -65,6 +65,8 @@ impl Transport for Arc<ThreadInstance> {
                             )
                         );
 
+                        async_error!(new_instance.eval.clone(), tcp_bind(new_instance.clone()));
+
                         async_error!(
                             self_clone.instance.eval.clone(),
                             self_clone
@@ -73,8 +75,6 @@ impl Transport for Arc<ThreadInstance> {
                                 .clone()
                                 .couple(new_instance.broadcast.clone())
                         );
-
-                        async_error!(new_instance.eval.clone(), tcp_bind(new_instance.clone()));
 
                         /* make transport here configurable
                         new_self.forwarder.register(uuid, ep.clone());

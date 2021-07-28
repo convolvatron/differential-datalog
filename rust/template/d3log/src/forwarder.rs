@@ -87,7 +87,6 @@ impl Forwarder {
 
     pub fn register(&self, n: Node, p: Port) {
         // overwrite warning?
-        println!("register {} {}", self.eval.clone().myself(), n);
 
         let entry = self.lookup(n);
         {
@@ -98,7 +97,6 @@ impl Forwarder {
             p.clone().send(b);
         }
         while let Some(r) = { entry.lock().expect("lock").registrations.pop_front() } {
-            println!("queued registration");
             self.register(r, p.clone());
         }
     }
@@ -130,7 +128,7 @@ impl Transport for Forwarder {
                                 "queue {} {} {}",
                                 self.eval.clone().myself(),
                                 nid,
-                                RecordBatch::from(self.eval.clone(), Batch::Value(*b.clone()))
+                                RecordBatch::from(self.eval.clone(), Batch::Value(*b.clone())),
                             );
                             x.batches.push_front(Batch::Value(*b));
                             break;

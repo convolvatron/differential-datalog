@@ -16,8 +16,8 @@ use tokio::{
 };
 
 use crate::{
-    async_error, fact, function, json_framer::JsonFramer, nega_fact, send_error, Batch,
-    DDValueBatch, Dred, Error, Evaluator, Instance, Port, RecordBatch, Transport,
+    async_error, async_expect_some, fact, function, json_framer::JsonFramer, nega_fact, send_error,
+    Batch, DDValueBatch, Dred, Error, Evaluator, Instance, Port, RecordBatch, Transport,
 };
 
 use differential_datalog::record::*;
@@ -32,46 +32,39 @@ struct AddressListener {
 impl Transport for AddressListener {
     fn send(&self, b: Batch) {
         for (_r, v, _w) in &RecordBatch::from(self.instance.eval.clone(), b) {
-            if let Some(destination) = v.get_struct_field("destination") {
-                if let Some(location) = v.get_struct_field("location") {
-                    match destination {
-                        // what are the unused fields?
-                        Record::String(string) => {
-                            let address = string.parse();
-                            let loc: u128 = async_error!(
-                                self.instance.eval.clone(),
-                                FromRecord::from_record(&location)
-                            );
-                            // we add an entry to forward this nid to this tcp address
-                            let peer = Arc::new(TcpPeer {
-                                management: self.instance.broadcast.clone(),
-                                eval: self.instance.eval.clone(),
-                                tcp_inner: Arc::new(Mutex::new(TcpPeerInternal {
-                                    eval: self.instance.eval.clone(),
-                                    stream: None,
-                                    address: address.unwrap(), //async error
-                                                               // sends: Vec::new(),
-                                })),
-                                rt: self.instance.rt.clone(),
-                            });
-                            self.instance.forwarder.register(loc, peer);
-                            return;
-                        }
-                        _ => async_error!(
-                            self.instance.eval.clone(),
-                            Err(Error::new(format!(
-                                "bad tcp address {}",
-                                destination.to_string()
-                            )))
-                        ),
-                    }
+            let destination =
+                async_expect_some!(self.instance.eval, v.get_struct_field("destination"));
+            let location = async_expect_some!(self.instance.eval, v.get_struct_field("location"));
+            match destination {
+                // what are the unused fields?
+                Record::String(string) => {
+                    let address = string.parse();
+                    let loc: u128 = async_error!(
+                        self.instance.eval.clone(),
+                        FromRecord::from_record(&location)
+                    );
+                    // we add an entry to forward this nid to this tcp address
+                    let peer = Arc::new(TcpPeer {
+                        management: self.instance.broadcast.clone(),
+                        eval: self.instance.eval.clone(),
+                        tcp_inner: Arc::new(Mutex::new(TcpPeerInternal {
+                            eval: self.instance.eval.clone(),
+                            stream: None,
+                            address: address.unwrap(), //async error
+                                                       // sends: Vec::new(),
+                        })),
+                        rt: self.instance.rt.clone(),
+                    });
+                    self.instance.forwarder.register(loc, peer);
                 }
+                _ => async_error!(
+                    self.instance.eval.clone(),
+                    Err(Error::new(format!(
+                        "bad tcp address {}",
+                        destination.to_string()
+                    )))
+                ),
             }
-
-            async_error!(
-                self.instance.eval.clone(),
-                Err(Error::new("ill formed process".to_string()))
-            );
         }
     }
 }
@@ -90,7 +83,7 @@ pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
         // xxx get external  ip address
         let listener = async_error!(clone.eval.clone(), TcpListener::bind("127.0.0.1:0").await);
         let addr = listener.local_addr().unwrap();
-        println!("Sending binding");
+
         clone.broadcast.send(fact!(
                 d3_application::TcpAddress,
                 location => clone.uuid.into_record(),
@@ -178,10 +171,7 @@ impl Transport for TcpPeer {
             if tcp_peer.stream.is_none() {
                 // xxx use async_error
                 tcp_peer.stream = match TcpStream::connect(tcp_peer.address).await {
-                    Ok(x) => {
-                        println!("connect {} {}", addr, tcp_peer.address);
-                        Some(Arc::new(Mutex::new(x)))
-                    }
+                    Ok(x) => Some(Arc::new(Mutex::new(x))),
                     Err(_x) => panic!("connection failure {}", tcp_peer.address),
                 };
             };

@@ -3,15 +3,10 @@
 // order to maintain a consistent spanning tree (and a strategy for avoiding storms for temporariliy
 // inconsistent topologies
 
-use crate::{Batch, DDValueBatch, Error, Node, Port, Transport};
+use crate::{Batch, DDValueBatch, Error, Node, Port, Trace, Transport};
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-
-pub struct Ingress {
-    index: usize,
-    broadcast: Arc<Broadcast>,
-}
 
 #[derive(Clone, Default)]
 pub struct Broadcast {
@@ -59,16 +54,45 @@ impl PubSub for Arc<Broadcast> {
     }
 
     fn couple(self, b: Arc<Broadcast>) -> Result<(), Error> {
-        let index = self.count.fetch_add(1, Ordering::Acquire);
-        let p2 = b.subscribe(Arc::new(Ingress {
-            broadcast: self.clone(),
-            index,
-        }));
-        p2.clone()
-            .send(Batch::Value(self.accumulator.lock().expect("lock").clone()));
-        self.ports.lock().expect("lock").push((p2, index));
+        let (p, batch) = {
+            let index = self.count.fetch_add(1, Ordering::Acquire);
+            let p1 = Arc::new(Ingress {
+                broadcast: self.clone(),
+                index,
+            });
+
+            //            let p1 = Trace::new(b.clone().id, "up".to_string(), p1);
+            let p2 = b.clone().subscribe(p1);
+            //            let p2 = Trace::new(b.clone().id, "down".to_string(), p2);
+
+            let mut ports = self.ports.lock().expect("lock");
+            ports.push((p2.clone(), index));
+            (
+                p2.clone(),
+                Batch::Value(self.accumulator.lock().expect("lock").clone()),
+            )
+        };
+        p.send(batch);
         Ok(())
     }
+}
+
+impl Transport for Broadcast {
+    fn send(&self, b: Batch) {
+        // We clone this map to have a read-only copy, else, we'd open up the possiblity of a
+        // deadlock, if this `send` forms a cycle.
+        let ports = { &*self.ports.lock().expect("lock").clone() };
+        for (port, _) in ports {
+            port.send(b.clone())
+        }
+    }
+}
+
+// an Ingress port couples an output with an input, to avoid redistributing
+// facts back to the source. proper cycle detection will require spanning tree
+pub struct Ingress {
+    index: usize,
+    broadcast: Arc<Broadcast>,
 }
 
 impl Ingress {
@@ -82,17 +106,6 @@ impl Transport for Ingress {
             if *index != self.index {
                 port.send(b.clone())
             }
-        }
-    }
-}
-
-impl Transport for Broadcast {
-    fn send(&self, b: Batch) {
-        // We clone this map to have a read-only copy, else, we'd open up the possiblity of a
-        // deadlock, if this `send` forms a cycle.
-        let ports = { &*self.ports.lock().expect("lock").clone() };
-        for (port, _) in ports {
-            port.send(b.clone())
         }
     }
 }

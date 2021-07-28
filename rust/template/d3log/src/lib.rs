@@ -69,13 +69,10 @@ pub enum Batch {
 
 impl Display for Batch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        writeln!(f, "Batch [").unwrap();
         match self {
             Batch::Value(b) => b.fmt(f),
             Batch::Rec(b) => b.fmt(f),
         }
-        .unwrap();
-        writeln!(f, "\n]\n")
     }
 }
 
@@ -212,9 +209,10 @@ impl Instance {
 
         ThreadInstance::new(instance.clone(), new_evaluator)?;
 
-        broadcast
-            .clone()
-            .subscribe(Arc::new(DebugPort { eval: eval.clone() }));
+        //        broadcast
+        //            .clone()
+        //            .subscribe(Arc::new(DebugPort { eval: eval.clone() }));
+
         instance
             .eval_port
             .send(fact!(d3_application::Myself, me => uuid.into_record()));
