@@ -1,6 +1,4 @@
-// turn a .dat file into a stream of batches. now that we are integrated into rust/template/src/main.rs
-// it really doesn't make sense to have this as a d3log function redundant with it
-use crate::{d3::Evaluator, error::Error, record_batch::RecordBatch, Batch};
+use crate::{record_batch::RecordBatch, Batch, Error, Evaluator};
 use cmd_parser::{err_str, parse_command, Command};
 use differential_datalog::record::RelIdentifier::{RelId, RelName};
 use differential_datalog::record::UpdCmd;
@@ -28,14 +26,11 @@ where
     Ok(())
 }
 
-pub async fn read_batches_from_file<F>(
+pub async fn read_batches_from_file(
     filename: String,
     e: Evaluator,
-    mut cb: F,
-) -> Result<(), Error>
-where
-    F: FnMut(Batch),
-{
+    cb: &mut dyn FnMut(Batch),
+) -> Result<(), Error> {
     let mut b = RecordBatch::new();
     parse_input(filename, |c| -> Result<(), Error> {
         match c {
@@ -54,7 +49,7 @@ where
             },
             Command::Commit(_bool) => {
                 // shouldn't need to clone here, i'm passing the torch to you cb
-                cb(Batch::Record(b.clone()));
+                cb(Batch::Rec(b.clone()));
                 b = RecordBatch::new();
                 Ok(())
             }

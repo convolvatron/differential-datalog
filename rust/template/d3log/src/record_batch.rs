@@ -2,7 +2,7 @@
 // Batch for interchange between different ddlog programs
 
 #![allow(dead_code)]
-use crate::{error::Error, Batch, Evaluator};
+use crate::{error::Error, json_framer::JsonFramer, Batch, Evaluator};
 use differential_datalog::record::{CollectionKind, Record};
 use num::bigint::ToBigInt;
 use num::BigInt;
@@ -11,6 +11,7 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
 use std::fmt::Display;
+use std::fs;
 use std::string::String;
 
 use serde::{
@@ -19,6 +20,23 @@ use serde::{
 };
 
 use serde_json::{Value, Value::*};
+
+pub fn read_record_json_file(filename: String, cb: &mut dyn FnMut(Batch)) -> Result<(), Error> {
+    let body = fs::read_to_string(filename.clone())?;
+    let mut jf = JsonFramer::new();
+    for i in jf.append(body.as_bytes())?.into_iter() {
+        let k = match deserialize_record_batch(i) {
+            Ok(x) => x,
+            Err(x) => {
+                println!("json err {}", x);
+                panic!("z");
+            }
+        };
+        println!("des {}", k);
+        cb(k);
+    }
+    Ok(())
+}
 
 #[derive(Clone, Default)]
 pub struct RecordBatch {

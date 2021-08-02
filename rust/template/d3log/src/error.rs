@@ -2,10 +2,8 @@
 // so as to implicity coerce all the errors thrown by '?'
 //TODOs:
 //  write a macro for the common to_string case below
-//  refactor(?) async_error so it doesn't require its users pull in a bunch of dependencies
 //  consider adding support for nesting
 //  macro for record field extraction case
-//  consider adding support for source location if thats possible
 
 use core::convert::Infallible;
 use core::fmt;

@@ -1,4 +1,5 @@
 pub mod broadcast;
+pub mod datfile;
 pub mod ddvalue_batch;
 mod dispatch;
 pub mod dred;
@@ -90,11 +91,8 @@ pub type Port = Arc<(dyn Transport + Send + Sync)>;
 // shouldn't evaluator just implement Transport?
 struct EvalPort {
     eval: Evaluator,
-    forwarder: Port,
     dispatch: Port,
-    //    queue: Arc<Mutex<VecDeque<Batch>>>,
     s: Arc<Mutex<Sender<Batch>>>,
-    r: Arc<Mutex<Receiver<Batch>>>,
 }
 
 impl Transport for EvalPort {
@@ -104,16 +102,6 @@ impl Transport for EvalPort {
             self.eval.clone(),
             self.s.lock().expect("lock").send(b.clone())
         );
-
-        loop {
-            match self.r.lock().expect("lock").try_recv() {
-                Ok(x) => {
-                    let out = async_error!(self.eval.clone(), self.eval.eval(x.clone()));
-                    self.forwarder.send(out.clone());
-                }
-                Err(_) => return,
-            }
-        }
     }
 }
 
@@ -184,11 +172,9 @@ impl Instance {
         }));
 
         let eval_port = Arc::new(EvalPort {
-            forwarder: forwarder.clone(),
             dispatch: dispatch.clone(),
             eval: eval.clone(),
             s: Arc::new(Mutex::new(esend)),
-            r: Arc::new(Mutex::new(erecv)),
         });
 
         let instance = Arc::new(Instance {
@@ -200,6 +186,19 @@ impl Instance {
             dispatch: dispatch.clone(),
             forwarder: forwarder.clone(),
             rt: rt.clone(),
+        });
+
+        let instance_clone = instance.clone();
+        rt.spawn(async move {
+            loop {
+                let x = async_error!(instance_clone.eval, erecv.recv());
+                let out = async_error!(
+                    instance_clone.eval.clone(),
+                    instance_clone.eval.eval(x.clone())
+                );
+                instance_clone.dispatch.send(out.clone());
+                instance_clone.forwarder.send(out.clone());
+            }
         });
 
         // self registration leads to trouble

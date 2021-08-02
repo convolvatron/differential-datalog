@@ -16,7 +16,7 @@ compile:
 	(cd mini_skyline_ddlog ; cargo build --features distribution)
 
 start: 
-	./mini_skyline_ddlog/target/debug/mini_skyline_cli
+	./mini_skyline_ddlog/target/debug/mini_skyline_cli -i mini_skyline.json 
 
 inc: compile start
 run: program compile start	

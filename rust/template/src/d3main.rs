@@ -1,7 +1,11 @@
 use crate::{relid2name, relval_from_record, Relations, UpdateSerializer};
 use d3log::{
-    ddvalue_batch::DDValueBatch, error::Error, fact, record_batch::RecordBatch,
-    tcp_network::tcp_bind, Batch, Evaluator, EvaluatorTrait, Instance, Node, Port, Transport,
+    ddvalue_batch::DDValueBatch,
+    error::Error,
+    fact,
+    record_batch::{read_record_json_file, serialize_record_batch, RecordBatch},
+    tcp_network::tcp_bind,
+    Batch, Evaluator, EvaluatorTrait, Instance, Node, Port, Transport,
 };
 use differential_datalog::program::config::{Config, ProfilingConfig};
 
@@ -221,7 +225,7 @@ impl EvaluatorTrait for D3 {
     }
 }
 
-pub fn start_d3log() -> Result<(), Error> {
+pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
     let (uuid, is_parent) = if let Some(uuid) = std::env::var_os("uuid") {
         if let Some(uuid) = uuid.to_str() {
             let my_uuid = uuid.parse::<u128>().unwrap();
@@ -256,11 +260,16 @@ pub fn start_d3log() -> Result<(), Error> {
         );
     }
 
-    // XXX: we really kind of want the initial evaluation to happen at one ingress node
-    // find the ddlog ticket against and reference here
-    if is_parent {
-        rt.spawn(async move {
-            instance.dispatch.clone().send(instance.init_batch.clone());
+    if let Some(f) = inputfile {
+        read_record_json_file(f, &mut |b: Batch| {
+            // XXX - fields in b that aren't present in the target relation are ignored,
+            // fields specified for the target that aren't in the source zre zeroed (?)
+
+            let d = DDValueBatch::from(&*instance.eval, b.clone()).expect("ddv");
+            for (_r, f, w) in &RecordBatch::from(instance.eval.clone(), Batch::Value(d)) {
+                println!("{} {} {}", instance.eval.clone().myself(), f, w);
+            }
+            instance.eval_port.send(b);
         });
     }
 

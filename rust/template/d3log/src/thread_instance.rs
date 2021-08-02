@@ -37,7 +37,6 @@ pub struct ThreadInstance {
 impl Transport for Arc<ThreadInstance> {
     fn send(&self, b: Batch) {
         for (_, p, weight) in &RecordBatch::from(self.instance.eval.clone(), b) {
-            // async_error variant for Some
             let uuid_record = p.get_struct_field("id").unwrap();
             let uuid = async_error!(self.instance.eval.clone(), Node::from_record(uuid_record));
 
