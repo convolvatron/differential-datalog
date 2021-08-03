@@ -253,6 +253,7 @@ rustLibFiles =
         , ("d3log/src/json_framer.rs"                             , $(embedFile "rust/template/d3log/src/json_framer.rs"))
         , ("d3log/src/thread_instance.rs"                         , $(embedFile "rust/template/d3log/src/thread_instance.rs"))                
         , ("d3log/src/dred.rs"                                    , $(embedFile "rust/template/d3log/src/dred.rs"))
+        , ("d3log/src/process.rs"                                 , $(embedFile "rust/template/d3log/src/process.rs"))
         , ("d3log/src/datfile.rs"                                 , $(embedFile "rust/template/d3log/src/datfile.rs"))
         , ("ovsdb/Cargo.toml"                                     , $(embedFile "rust/template/ovsdb/Cargo.toml"))
         , ("ovsdb/lib.rs"                                         , $(embedFile "rust/template/ovsdb/lib.rs"))

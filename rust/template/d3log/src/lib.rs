@@ -6,6 +6,7 @@ pub mod dred;
 pub mod error;
 mod forwarder;
 mod json_framer;
+pub mod process;
 pub mod record_batch;
 pub mod tcp_network;
 mod thread_instance;
@@ -25,6 +26,7 @@ use crate::{
     dred::Dred,
     error::Error,
     forwarder::Forwarder,
+    process::ProcessInstance,
     record_batch::RecordBatch,
     tcp_network::tcp_bind,
     thread_instance::ThreadInstance,
@@ -206,8 +208,9 @@ impl Instance {
 
         broadcast.clone().subscribe(instance.eval_port.clone());
 
-        ThreadInstance::new(instance.clone(), new_evaluator)?;
+        ThreadInstance::new(instance.clone(), new_evaluator.clone())?;
 
+        ProcessInstance::new(instance.clone(), new_evaluator.clone())?;
         //        broadcast
         //            .clone()
         //            .subscribe(Arc::new(DebugPort { eval: eval.clone() }));
