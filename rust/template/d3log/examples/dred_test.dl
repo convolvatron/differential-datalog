@@ -1,0 +1,35 @@
+import d3_application
+
+input relation Node(id: u128, path: string, management: bool)
+
+// Move to dred_test.json to side-step init_batch issue!
+//Node(1, "/opt/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli", true)
+//Node(2, "/opt/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli", true)
+//Node(3, "/opt/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli", true)
+
+// to create ThreadInstance
+//ThreadInstance(loc) :- Node(loc).
+
+// to create ProcessInstance
+Process(id, path, management) :- Node(id, path, management).
+
+output relation Final(x: u64)
+
+relation Aa(x: u64)
+relation Bb(x: u64)
+relation Cc(x: u64)
+input relation Dd(x: u64)
+
+// Evaluates A() on node1 for every B
+Aa(x)@1 :- Bb(x).
+
+// Evaluates B() on node2 for every C
+Bb(x)@2 :- Cc(x).
+
+// Evaluates C() on node3 for every D
+Cc(x)@3 :- Dd(x).
+
+Final(x) :- Aa(x).
+
+//Dd(0).
+//Dd(1).

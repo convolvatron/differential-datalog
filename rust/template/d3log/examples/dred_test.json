@@ -1,0 +1,13 @@
+ [0,
+ {
+	"Node":[
+	 {"id":{"Serialized":["Bigint","1"]},"path":{"String":"/opt/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli"}, "management":{"Bool":true}},
+	 {"id":{"Serialized":["Bigint","2"]},"path":{"String":"/opt/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli"}, "management":{"Bool":true}},
+	 {"id":{"Serialized":["Bigint","3"]},"path":{"String":"/opt/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli"}, "management":{"Bool":true}}
+	],
+	"Dd":[
+	 {"x":{"Serialized":["Bigint","0"]}},
+	 {"x":{"Serialized":["Bigint","1"]}}
+	]
+ }
+]
