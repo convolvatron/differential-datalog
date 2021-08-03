@@ -123,7 +123,8 @@ fn value_to_record(v: Value) -> Result<Record, Error> {
                     }
                     // there should be a way to extract Some and error otherwise
                     "String" => return Ok(Record::String(v.as_str().unwrap().to_string())),
-                    _ => println!("non int value"),
+                    "Bool" => return Ok(Record::Bool(v.as_bool().unwrap())),
+                    _ => println!("Unhandled Json value type: {}", k.as_str()),
                 };
             }
             Err(Error::new("bad record json".to_string()))
