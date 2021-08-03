@@ -3,8 +3,8 @@
 // method for that destination
 
 use crate::{
-    async_error, function, send_error, Batch, DDValueBatch, Dispatch, Evaluator, Node, Port,
-    RecordBatch, Transport,
+    async_error, function, send_error, Batch, DDValueBatch, Dispatch, Evaluator, Factset, Node,
+    Port, RecordBatch, Transport,
 };
 use differential_datalog::record::*;
 use std::collections::HashMap;
@@ -128,16 +128,23 @@ impl Transport for Forwarder {
                                 "queue {} {} {}",
                                 self.eval.clone().myself(),
                                 nid,
-                                RecordBatch::from(self.eval.clone(), Batch::Value(*b.clone())),
+                                RecordBatch::from(
+                                    self.eval.clone(),
+                                    Batch::new(Factset::Empty(), Factset::Value(*b.clone()))
+                                ),
                             );
-                            x.batches.push_front(Batch::Value(*b));
+                            x.batches
+                                .push_front(Batch::new(Factset::Empty(), Factset::Value(*b)));
                             break;
                         }
                     },
                     Err(_) => panic!("lock"),
                 }
             };
-            p.send(Batch::Value(b.deref().clone()))
+            p.send(Batch::new(
+                Factset::Empty(),
+                Factset::Value(b.deref().clone()),
+            ))
         }
     }
 }

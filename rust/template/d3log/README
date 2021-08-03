@@ -95,7 +95,10 @@ Issues:
 D3log JSON Protocol
 --------------------
 
+native serialization
+
 D3log Source
 --------------------
  d3main in the generated tree acts as a proxy to the enclosed metadata
  and evaluation interfaces of the DDlog program. 
+

@@ -2,7 +2,7 @@
 // Batch for interchange between different ddlog programs
 
 #![allow(dead_code)]
-use crate::{error::Error, json_framer::JsonFramer, Batch, Evaluator};
+use crate::{error::Error, json_framer::JsonFramer, Batch, Evaluator, Factset};
 use differential_datalog::record::{CollectionKind, Record};
 use num::bigint::ToBigInt;
 use num::BigInt;
@@ -47,22 +47,24 @@ pub struct RecordBatch {
 #[macro_export]
 macro_rules! fact {
     ( $rel:path,  $($n:ident => $v:expr),* ) => {
-        Batch::Rec(RecordBatch::singleton(
-            Record::NamedStruct(
-                Cow::from(stringify!($rel).to_string()),
-                vec![$((Cow::from(stringify!($n)), $v),)*]), 1))
+        Batch::new(Factset::Empty(),
+                   Factset::Record(RecordBatch::singleton(
+                       Record::NamedStruct(
+                           Cow::from(stringify!($rel).to_string()),
+                           vec![$((Cow::from(stringify!($n)), $v),)*]), 1)))}
     }
-}
 
 #[macro_export]
 macro_rules! nega_fact {
     ( $rel:path,  $($n:ident => $v:expr),* ) => {
-        Batch::Rec(RecordBatch::singleton(
-            Record::NamedStruct(
-                Cow::from(stringify!($rel).to_string()),
-                vec![$((Cow::from(stringify!($n)), $v),)*]), -1))
+        Batch::new(Factset::Empty(),
+                   Factset::Record(RecordBatch::singleton(
+                       Record::NamedStruct(
+                           Cow::from(stringify!($rel).to_string()),
+                           vec![$((Cow::from(stringify!($n)), $v),)*]), -1)))
     }
 }
+
 impl Display for RecordBatch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut m = HashMap::new();
@@ -270,8 +272,8 @@ impl RecordBatch {
     // tried to use impl From<Batch> for RecordBatch, but no error path, other type issues
     // why no err?
     pub fn from(eval: Evaluator, batch: Batch) -> RecordBatch {
-        match batch.clone() {
-            Batch::Value(x) => {
+        match batch.clone().data {
+            Factset::Value(x) => {
                 let mut rb = RecordBatch::new();
                 for (record, val, weight) in &x {
                     let rel_name = eval.clone().relation_name_from_id(record).unwrap();
@@ -286,7 +288,8 @@ impl RecordBatch {
                 }
                 rb
             }
-            Batch::Rec(x) => x,
+            Factset::Record(x) => x,
+            Factset::Empty() => RecordBatch::new(),
         }
     }
 }
@@ -329,5 +332,5 @@ pub fn serialize_record_batch(r: RecordBatch) -> Result<Vec<u8>, Error> {
 pub fn deserialize_record_batch(v: Vec<u8>) -> Result<Batch, Error> {
     let s = std::str::from_utf8(&v)?;
     let v: RecordBatch = serde_json::from_str(&s)?;
-    Ok(Batch::Rec(v))
+    Ok(Batch::new(Factset::Empty(), Factset::Record(v)))
 }

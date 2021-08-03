@@ -1,5 +1,4 @@
 pub mod broadcast;
-pub mod datfile;
 pub mod ddvalue_batch;
 mod dispatch;
 pub mod dred;
@@ -14,7 +13,7 @@ use core::fmt;
 use differential_datalog::{ddval::DDValue, record::*, D3logLocationId};
 use std::borrow::Cow;
 use std::fmt::Display;
-use std::sync::mpsc::{channel, Receiver, Sender};
+use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
 
@@ -63,16 +62,36 @@ pub struct Instance {
 pub type Evaluator = Arc<(dyn EvaluatorTrait + Send + Sync)>;
 
 #[derive(Clone)]
-pub enum Batch {
+pub enum Factset {
     Value(DDValueBatch),
-    Rec(RecordBatch),
+    Record(RecordBatch),
+    Empty(),
+}
+
+#[derive(Clone)]
+pub struct Batch {
+    meta: Factset,
+    data: Factset,
+}
+
+impl Batch {
+    pub fn new(meta: Factset, data: Factset) -> Batch {
+        Batch { meta, data }
+    }
 }
 
 impl Display for Batch {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&format!("({} {})", self.meta, self.data))
+    }
+}
+
+impl Display for Factset {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Batch::Value(b) => b.fmt(f),
-            Batch::Rec(b) => b.fmt(f),
+            Factset::Value(b) => b.fmt(f),
+            Factset::Record(b) => b.fmt(f),
+            Factset::Empty() => f.write_str("<>"),
         }
     }
 }

@@ -17,7 +17,7 @@ use tokio::{
 
 use crate::{
     async_error, async_expect_some, fact, function, json_framer::JsonFramer, nega_fact, send_error,
-    Batch, DDValueBatch, Dred, Error, Evaluator, Instance, Port, RecordBatch, Transport,
+    Batch, DDValueBatch, Dred, Error, Evaluator, Factset, Instance, Port, RecordBatch, Transport,
 };
 
 use differential_datalog::record::*;
@@ -120,10 +120,13 @@ pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
                                 .append(&buffer[0..bytes_input])
                                 .expect("json coding error")
                             {
-                                dred_port.send(Batch::Value(async_error!(
-                                    clone2.eval.clone(),
-                                    clone2.eval.clone().deserialize_batch(i)
-                                )));
+                                dred_port.send(Batch::new(
+                                    Factset::Empty(),
+                                    Factset::Value(async_error!(
+                                        clone2.eval.clone(),
+                                        clone2.eval.clone().deserialize_batch(i)
+                                    )),
+                                ));
                             }
                         }
                         Err(_) => {
@@ -162,7 +165,6 @@ struct TcpPeer {
 impl Transport for TcpPeer {
     fn send(&self, b: Batch) {
         let tcp_inner_clone = self.tcp_inner.clone();
-        let addr = self.eval.clone().myself();
         // xxx - do these join handles need to be collected and waited upon for
         // resource recovery?
         self.rt.spawn(async move {

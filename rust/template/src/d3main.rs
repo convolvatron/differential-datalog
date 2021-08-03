@@ -3,9 +3,9 @@ use d3log::{
     ddvalue_batch::DDValueBatch,
     error::Error,
     fact,
-    record_batch::{read_record_json_file, serialize_record_batch, RecordBatch},
+    record_batch::{read_record_json_file, RecordBatch},
     tcp_network::tcp_bind,
-    Batch, Evaluator, EvaluatorTrait, Instance, Node, Port, Transport,
+    Batch, Evaluator, EvaluatorTrait, Factset, Instance, Node, Port, Transport,
 };
 use differential_datalog::program::config::{Config, ProfilingConfig};
 
@@ -266,7 +266,10 @@ pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
             // fields specified for the target that aren't in the source zre zeroed (?)
 
             let d = DDValueBatch::from(&*instance.eval, b.clone()).expect("ddv");
-            for (_r, f, w) in &RecordBatch::from(instance.eval.clone(), Batch::Value(d)) {
+            for (_r, f, w) in &RecordBatch::from(
+                instance.eval.clone(),
+                Batch::new(Factset::Empty(), Factset::Value(d)),
+            ) {
                 println!("{} {} {}", instance.eval.clone().myself(), f, w);
             }
             instance.eval_port.send(b);
