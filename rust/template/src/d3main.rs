@@ -1,11 +1,12 @@
 use crate::{relid2name, relval_from_record, Relations, UpdateSerializer};
 use d3log::{
-    ddvalue_batch::DDValueBatch,
+    broadcast::PubSub,
     error::Error,
     fact,
-    record_batch::{read_record_json_file, RecordBatch},
+    record_set::{read_record_json_file, RecordSet},
     tcp_network::tcp_bind,
-    Batch, Evaluator, EvaluatorTrait, Factset, Instance, Node, Port, Transport,
+    value_set::ValueSet,
+    Batch, DebugPort, Evaluator, EvaluatorTrait, Factset, Instance, Node, Port, Transport,
 };
 use differential_datalog::program::config::{Config, ProfilingConfig};
 
@@ -46,13 +47,13 @@ pub struct D3 {
 }
 
 struct SerializeBatchWrapper {
-    b: DDValueBatch,
+    b: ValueSet,
 }
 
 struct BatchVisitor {}
 
 impl<'de> Visitor<'de> for BatchVisitor {
-    type Value = DDValueBatch;
+    type Value = ValueSet;
 
     // his just formats an error message..in advance?
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -63,7 +64,7 @@ impl<'de> Visitor<'de> for BatchVisitor {
     where
         E: SeqAccess<'de>,
     {
-        let bn = DDValueBatch::new();
+        let bn = ValueSet::new();
         {
             let mut b = bn.0.lock().unwrap();
 
@@ -97,7 +98,7 @@ impl<'de> Deserialize<'de> for SerializeBatchWrapper {
     where
         D: Deserializer<'de>,
     {
-        let b: DDValueBatch = deserializer.deserialize_any(BatchVisitor {})?;
+        let b: ValueSet = deserializer.deserialize_any(BatchVisitor {})?;
         Ok(SerializeBatchWrapper { b })
     }
 }
@@ -129,7 +130,7 @@ impl D3 {
             .with_profiling_config(ProfilingConfig::SelfProfiling);
         let (h, init_output) = crate::run_with_config(config, false)?;
         let ad = Arc::new(D3 { h, uuid, error });
-        Ok((ad, DDValueBatch::from_delta_map(init_output)))
+        Ok((ad, ValueSet::from_delta_map(init_output)))
     }
 }
 
@@ -158,10 +159,8 @@ impl EvaluatorTrait for D3 {
 
     // does it make sense to try to use the HDDLog record evaluation?
     fn eval(&self, input: Batch) -> Result<Batch, Error> {
-        // would like to implicitly convert batch to ddvalue_batch, but i cant, because i need an
-        // evaluator, and its been deconstructed before we get here...
         let mut upd = Vec::new();
-        let b = DDValueBatch::from(self, input)?;
+        let b = ValueSet::from(self, input.data)?;
 
         for (relid, v, _) in &b {
             upd.push(Update::Insert { relid, v });
@@ -169,7 +168,7 @@ impl EvaluatorTrait for D3 {
 
         self.h.transaction_start()?;
         self.h.apply_updates(&mut upd.clone().drain(..))?;
-        Ok(DDValueBatch::from_delta_map(
+        Ok(ValueSet::from_delta_map(
             self.h.transaction_commit_dump_changes()?,
         ))
     }
@@ -212,13 +211,13 @@ impl EvaluatorTrait for D3 {
     }
 
     // xxx - actually we want to parameterize on format, not on internal representation
-    fn serialize_batch(&self, b: DDValueBatch) -> Result<Vec<u8>, Error> {
+    fn serialize_value_set(&self, b: ValueSet) -> Result<Vec<u8>, Error> {
         let w = SerializeBatchWrapper { b };
         let encoded = serde_json::to_string(&w)?;
         Ok(encoded.as_bytes().to_vec())
     }
 
-    fn deserialize_batch(&self, s: Vec<u8>) -> Result<DDValueBatch, Error> {
+    fn deserialize_value_set(&self, s: Vec<u8>) -> Result<ValueSet, Error> {
         let s = std::str::from_utf8(&s)?;
         let v: SerializeBatchWrapper = serde_json::from_str(&s)?;
         Ok(v.b)
@@ -248,6 +247,12 @@ pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
     let instance = Instance::new(rt.clone(), Arc::new(d), uuid)?;
 
     tcp_bind(instance.clone())?;
+
+    // xxx under a command line flag
+    instance.broadcast.clone().subscribe(Arc::new(DebugPort {
+        eval: instance.eval.clone(),
+    }));
+
     if is_parent {
         let debug_uuid = u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>());
         // batch union?
@@ -261,18 +266,12 @@ pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
     }
 
     if let Some(f) = inputfile {
-        read_record_json_file(f, &mut |b: Batch| {
+        read_record_json_file(f, &mut |b: RecordSet| {
             // XXX - fields in b that aren't present in the target relation are ignored,
             // fields specified for the target that aren't in the source zre zeroed (?)
-
-            let d = DDValueBatch::from(&*instance.eval, b.clone()).expect("ddv");
-            for (_r, f, w) in &RecordBatch::from(
-                instance.eval.clone(),
-                Batch::new(Factset::Empty(), Factset::Value(d)),
-            ) {
-                println!("{} {} {}", instance.eval.clone().myself(), f, w);
-            }
-            instance.eval_port.send(b);
+            instance
+                .eval_port
+                .send(Batch::new(Factset::Empty(), Factset::Record(b)));
         });
     }
 

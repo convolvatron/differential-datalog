@@ -2,7 +2,7 @@
 // Batch for interchange between different ddlog programs
 
 #![allow(dead_code)]
-use crate::{error::Error, json_framer::JsonFramer, Batch, Evaluator, Factset};
+use crate::{error::Error, json_framer::JsonFramer, Evaluator, Factset};
 use differential_datalog::record::{CollectionKind, Record};
 use num::bigint::ToBigInt;
 use num::BigInt;
@@ -21,25 +21,24 @@ use serde::{
 
 use serde_json::{Value, Value::*};
 
-pub fn read_record_json_file(filename: String, cb: &mut dyn FnMut(Batch)) -> Result<(), Error> {
+pub fn read_record_json_file(filename: String, cb: &mut dyn FnMut(RecordSet)) -> Result<(), Error> {
     let body = fs::read_to_string(filename.clone())?;
     let mut jf = JsonFramer::new();
     for i in jf.append(body.as_bytes())?.into_iter() {
-        let k = match deserialize_record_batch(i) {
+        let k = match deserialize_record_set(i) {
             Ok(x) => x,
             Err(x) => {
                 println!("json err {}", x);
                 panic!("z");
             }
         };
-        println!("des {}", k);
         cb(k);
     }
     Ok(())
 }
 
 #[derive(Clone, Default)]
-pub struct RecordBatch {
+pub struct RecordSet {
     pub timestamp: u64,
     pub records: Vec<(Record, isize)>,
 }
@@ -48,7 +47,7 @@ pub struct RecordBatch {
 macro_rules! fact {
     ( $rel:path,  $($n:ident => $v:expr),* ) => {
         Batch::new(Factset::Empty(),
-                   Factset::Record(RecordBatch::singleton(
+                   Factset::Record(RecordSet::singleton(
                        Record::NamedStruct(
                            Cow::from(stringify!($rel).to_string()),
                            vec![$((Cow::from(stringify!($n)), $v),)*]), 1)))}
@@ -58,14 +57,14 @@ macro_rules! fact {
 macro_rules! nega_fact {
     ( $rel:path,  $($n:ident => $v:expr),* ) => {
         Batch::new(Factset::Empty(),
-                   Factset::Record(RecordBatch::singleton(
+                   Factset::Record(RecordSet::singleton(
                        Record::NamedStruct(
                            Cow::from(stringify!($rel).to_string()),
                            vec![$((Cow::from(stringify!($n)), $v),)*]), -1)))
     }
 }
 
-impl Display for RecordBatch {
+impl Display for RecordSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let mut m = HashMap::new();
         for (r, _w) in self.records.clone() {
@@ -153,10 +152,10 @@ fn record_to_value(r: Record) -> Result<Value, Error> {
     }
 }
 
-struct RecordBatchVisitor {}
+struct RecordSetVisitor {}
 
-impl<'de> Visitor<'de> for RecordBatchVisitor {
-    type Value = RecordBatch;
+impl<'de> Visitor<'de> for RecordSetVisitor {
+    type Value = RecordSet;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
         write!(formatter, "batch")
@@ -167,7 +166,7 @@ impl<'de> Visitor<'de> for RecordBatchVisitor {
         E: SeqAccess<'de>,
     {
         {
-            let mut bn = RecordBatch::new();
+            let mut bn = RecordSet::new();
             let timestamp: Option<u64> = e.next_element()?;
             match timestamp {
                 Some(timestamp) => bn.timestamp = timestamp,
@@ -202,17 +201,17 @@ impl<'de> Visitor<'de> for RecordBatchVisitor {
     }
 }
 
-impl<'de> Deserialize<'de> for RecordBatch {
+impl<'de> Deserialize<'de> for RecordSet {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: Deserializer<'de>,
     {
-        let b: RecordBatch = deserializer.deserialize_any(RecordBatchVisitor {})?;
+        let b: RecordSet = deserializer.deserialize_any(RecordSetVisitor {})?;
         Ok(b)
     }
 }
 
-impl Serialize for RecordBatch {
+impl Serialize for RecordSet {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -249,16 +248,16 @@ impl Serialize for RecordBatch {
     }
 }
 
-impl RecordBatch {
-    pub fn new() -> RecordBatch {
-        RecordBatch {
+impl RecordSet {
+    pub fn new() -> RecordSet {
+        RecordSet {
             timestamp: 0,
             records: Vec::new(),
         }
     }
 
-    pub fn singleton(rec: Record, weight: isize) -> RecordBatch {
-        RecordBatch {
+    pub fn singleton(rec: Record, weight: isize) -> RecordSet {
+        RecordSet {
             timestamp: 0,
             records: vec![(rec, weight)],
         }
@@ -269,12 +268,12 @@ impl RecordBatch {
         self.records.push((v, weight))
     }
 
-    // tried to use impl From<Batch> for RecordBatch, but no error path, other type issues
+    // tried to use impl From<Batch> for RecordSet, but no error path, other type issues
     // why no err?
-    pub fn from(eval: Evaluator, batch: Batch) -> RecordBatch {
-        match batch.clone().data {
+    pub fn from(eval: Evaluator, f: Factset) -> RecordSet {
+        match f {
             Factset::Value(x) => {
-                let mut rb = RecordBatch::new();
+                let mut rb = RecordSet::new();
                 for (record, val, weight) in &x {
                     let rel_name = eval.clone().relation_name_from_id(record).unwrap();
                     let _record: Record = eval.clone().record_from_ddvalue(val).unwrap();
@@ -289,16 +288,16 @@ impl RecordBatch {
                 rb
             }
             Factset::Record(x) => x,
-            Factset::Empty() => RecordBatch::new(),
+            Factset::Empty() => RecordSet::new(),
         }
     }
 }
 
-pub struct RecordBatchIterator<'a> {
+pub struct RecordSetIterator<'a> {
     items: Box<dyn Iterator<Item = (Record, isize)> + Send + 'a>,
 }
 
-impl<'a> Iterator for RecordBatchIterator<'a> {
+impl<'a> Iterator for RecordSetIterator<'a> {
     type Item = (String, Record, isize);
 
     fn next(&mut self) -> Option<(String, Record, isize)> {
@@ -311,12 +310,12 @@ impl<'a> Iterator for RecordBatchIterator<'a> {
     }
 }
 
-impl<'a> IntoIterator for &'a RecordBatch {
+impl<'a> IntoIterator for &'a RecordSet {
     type Item = (String, Record, isize);
-    type IntoIter = RecordBatchIterator<'a>;
+    type IntoIter = RecordSetIterator<'a>;
 
-    fn into_iter(self) -> RecordBatchIterator<'a> {
-        RecordBatchIterator {
+    fn into_iter(self) -> RecordSetIterator<'a> {
+        RecordSetIterator {
             items: Box::new(self.records.clone().into_iter()),
         }
     }
@@ -324,13 +323,12 @@ impl<'a> IntoIterator for &'a RecordBatch {
 
 // idk why i dont want to make these associated...i guess holding on to the idea
 // that the external representation doesn't need to be tied to the internal.
-pub fn serialize_record_batch(r: RecordBatch) -> Result<Vec<u8>, Error> {
+pub fn serialize_record_set(r: RecordSet) -> Result<Vec<u8>, Error> {
     let encoded = serde_json::to_string(&r)?;
     Ok(encoded.as_bytes().to_vec())
 }
 
-pub fn deserialize_record_batch(v: Vec<u8>) -> Result<Batch, Error> {
+pub fn deserialize_record_set(v: Vec<u8>) -> Result<RecordSet, Error> {
     let s = std::str::from_utf8(&v)?;
-    let v: RecordBatch = serde_json::from_str(&s)?;
-    Ok(Batch::new(Factset::Empty(), Factset::Record(v)))
+    Ok(serde_json::from_str(&s)?)
 }

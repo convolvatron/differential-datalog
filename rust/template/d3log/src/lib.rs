@@ -1,13 +1,13 @@
 pub mod broadcast;
-pub mod ddvalue_batch;
 mod dispatch;
 pub mod dred;
 pub mod error;
 mod forwarder;
 mod json_framer;
-pub mod record_batch;
+pub mod record_set;
 pub mod tcp_network;
 mod thread_instance;
+pub mod value_set;
 
 use core::fmt;
 use differential_datalog::{ddval::DDValue, record::*, D3logLocationId};
@@ -19,14 +19,14 @@ use tokio::runtime::Runtime;
 
 use crate::{
     broadcast::{Broadcast, PubSub},
-    ddvalue_batch::DDValueBatch,
     dispatch::Dispatch,
     dred::Dred,
     error::Error,
     forwarder::Forwarder,
-    record_batch::RecordBatch,
+    record_set::RecordSet,
     tcp_network::tcp_bind,
     thread_instance::ThreadInstance,
+    value_set::ValueSet,
 };
 
 pub type Node = D3logLocationId;
@@ -43,8 +43,8 @@ pub trait EvaluatorTrait {
     fn relation_name_from_id(&self, id: usize) -> Result<String, Error>;
 
     // these is ddvalue/relationid specific
-    fn serialize_batch(&self, b: DDValueBatch) -> Result<Vec<u8>, Error>;
-    fn deserialize_batch(&self, s: Vec<u8>) -> Result<DDValueBatch, Error>;
+    fn serialize_value_set(&self, b: ValueSet) -> Result<Vec<u8>, Error>;
+    fn deserialize_value_set(&self, s: Vec<u8>) -> Result<ValueSet, Error>;
 }
 
 #[derive(Clone)]
@@ -63,15 +63,15 @@ pub type Evaluator = Arc<(dyn EvaluatorTrait + Send + Sync)>;
 
 #[derive(Clone)]
 pub enum Factset {
-    Value(DDValueBatch),
-    Record(RecordBatch),
+    Value(ValueSet),
+    Record(RecordSet),
     Empty(),
 }
 
 #[derive(Clone)]
 pub struct Batch {
-    meta: Factset,
-    data: Factset,
+    pub meta: Factset,
+    pub data: Factset,
 }
 
 impl Batch {
@@ -147,13 +147,14 @@ impl Transport for Trace {
     }
 }
 
-struct DebugPort {
-    eval: Evaluator,
+pub struct DebugPort {
+    pub eval: Evaluator,
 }
 
 impl Transport for DebugPort {
     fn send(&self, b: Batch) {
-        for (_r, f, w) in &RecordBatch::from(self.eval.clone(), b) {
+        // print meta
+        for (_r, f, w) in &RecordSet::from(self.eval.clone(), b.data) {
             println!("{} {} {}", self.eval.clone().myself(), f, w);
         }
     }
@@ -161,12 +162,12 @@ impl Transport for DebugPort {
 
 struct AccumulatePort {
     eval: Evaluator,
-    accumulator: Arc<Mutex<DDValueBatch>>,
+    accumulator: Arc<Mutex<ValueSet>>,
 }
 
 impl Transport for AccumulatePort {
     fn send(&self, b: Batch) {
-        for (r, f, w) in &DDValueBatch::from(&(*self.eval), b).expect("iterator") {
+        for (r, f, w) in &(ValueSet::from(&(*self.eval), b.data).expect("iterator")) {
             self.accumulator.lock().expect("lock").insert(r, f, w);
         }
     }
@@ -178,7 +179,7 @@ impl Instance {
         new_evaluator: Arc<dyn Fn(Node, Port) -> Result<(Evaluator, Batch), Error> + Send + Sync>,
         uuid: u128,
     ) -> Result<Arc<Instance>, Error> {
-        let accumulator = Arc::new(Mutex::new(DDValueBatch::new()));
+        let accumulator = Arc::new(Mutex::new(ValueSet::new()));
         let broadcast = Broadcast::new(uuid, accumulator.clone());
         let (eval, init_batch) = new_evaluator(uuid, broadcast.clone())?;
         let dispatch = Arc::new(Dispatch::new(eval.clone()));
@@ -214,6 +215,11 @@ impl Instance {
                 let out = async_error!(
                     instance_clone.eval.clone(),
                     instance_clone.eval.eval(x.clone())
+                );
+                println!(
+                    "eval: {} {}",
+                    instance_clone.eval.clone().myself(),
+                    RecordSet::from(instance_clone.eval.clone(), out.clone().data)
                 );
                 instance_clone.dispatch.send(out.clone());
                 instance_clone.forwarder.send(out.clone());

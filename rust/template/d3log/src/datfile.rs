@@ -1,4 +1,4 @@
-use crate::{record_batch::RecordBatch, Batch, Error, Evaluator};
+use crate::{record_set::RecordSet, Batch, Error, Evaluator};
 use cmd_parser::{err_str, parse_command, Command};
 use differential_datalog::record::RelIdentifier::{RelId, RelName};
 use differential_datalog::record::UpdCmd;
@@ -31,7 +31,7 @@ pub async fn read_batches_from_file(
     e: Evaluator,
     cb: &mut dyn FnMut(Batch),
 ) -> Result<(), Error> {
-    let mut b = RecordBatch::new();
+    let mut b = RecordSet::new();
     parse_input(filename, |c| -> Result<(), Error> {
         match c {
             Command::Start => Ok(()),
@@ -50,7 +50,7 @@ pub async fn read_batches_from_file(
             Command::Commit(_bool) => {
                 // shouldn't need to clone here, i'm passing the torch to you cb
                 cb(Batch::Rec(b.clone()));
-                b = RecordBatch::new();
+                b = RecordSet::new();
                 Ok(())
             }
             _ => Ok(()),

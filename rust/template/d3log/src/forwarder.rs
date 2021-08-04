@@ -3,13 +3,12 @@
 // method for that destination
 
 use crate::{
-    async_error, function, send_error, Batch, DDValueBatch, Dispatch, Evaluator, Factset, Node,
-    Port, RecordBatch, Transport,
+    async_error, function, send_error, Batch, Dispatch, Evaluator, Factset, Node, Port, RecordSet,
+    Transport, ValueSet,
 };
 use differential_datalog::record::*;
 use std::collections::HashMap;
 use std::collections::VecDeque;
-use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 
 struct ForwardingEntryHandler {
@@ -20,7 +19,7 @@ struct ForwardingEntryHandler {
 impl Transport for ForwardingEntryHandler {
     fn send(&self, b: Batch) {
         // reconcile
-        for (_r, f, _w) in &RecordBatch::from(self.eval.clone(), b) {
+        for (_r, f, _w) in &RecordSet::from(self.eval.clone(), b.data) {
             let target = async_error!(
                 self.eval,
                 u128::from_record(f.get_struct_field("target").expect("target"))
@@ -106,13 +105,13 @@ use std::ops::DerefMut;
 
 impl Transport for Forwarder {
     fn send(&self, b: Batch) {
-        let mut output = HashMap::<Node, Box<DDValueBatch>>::new();
+        let mut output = HashMap::<Node, Box<ValueSet>>::new();
 
-        for (rel, v, weight) in &DDValueBatch::from(&(*self.eval), b).expect("iterator") {
+        for (rel, v, weight) in &(ValueSet::from(&(*self.eval), b.data).expect("iterator")) {
             if let Some((loc_id, in_rel, inner_val)) = self.eval.localize(rel, v.clone()) {
                 output
                     .entry(loc_id)
-                    .or_insert_with(|| Box::new(DDValueBatch::new()))
+                    .or_insert_with(|| Box::new(ValueSet::new()))
                     .deref_mut()
                     .insert(in_rel, inner_val, weight);
             }
@@ -124,15 +123,6 @@ impl Transport for Forwarder {
                     Ok(mut x) => match &x.port {
                         Some(x) => x.clone(),
                         None => {
-                            println!(
-                                "queue {} {} {}",
-                                self.eval.clone().myself(),
-                                nid,
-                                RecordBatch::from(
-                                    self.eval.clone(),
-                                    Batch::new(Factset::Empty(), Factset::Value(*b.clone()))
-                                ),
-                            );
                             x.batches
                                 .push_front(Batch::new(Factset::Empty(), Factset::Value(*b)));
                             break;
@@ -141,10 +131,7 @@ impl Transport for Forwarder {
                     Err(_) => panic!("lock"),
                 }
             };
-            p.send(Batch::new(
-                Factset::Empty(),
-                Factset::Value(b.deref().clone()),
-            ))
+            p.send(Batch::new(Factset::Empty(), Factset::Value(*b)))
         }
     }
 }

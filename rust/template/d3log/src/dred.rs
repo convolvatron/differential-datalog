@@ -3,7 +3,7 @@
 // 1) Enumerate the performance bottlenecks on the current DRED
 // 2) Write tests (Both in module and global)
 
-use crate::{Batch, DDValueBatch, Evaluator, Factset, Port, Transport};
+use crate::{Batch, Evaluator, Factset, Port, Transport, ValueSet};
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -11,7 +11,7 @@ use std::sync::Arc;
 pub struct Dred {
     eval: Evaluator,
     out_port: Port,
-    accumulator: RefCell<DDValueBatch>,
+    accumulator: RefCell<ValueSet>,
 }
 
 unsafe impl Sync for Dred {}
@@ -21,7 +21,7 @@ impl Dred {
         let d = Dred {
             eval,
             out_port,
-            accumulator: RefCell::new(DDValueBatch::new()),
+            accumulator: RefCell::new(ValueSet::new()),
         };
 
         (d.clone(), Arc::new(d))
@@ -44,7 +44,7 @@ impl Dred {
 
 impl Transport for Dred {
     fn send(&self, b: Batch) {
-        for (r, v, mut w) in &DDValueBatch::from(&*self.eval, b.clone()).expect("iterator") {
+        for (r, v, mut w) in &ValueSet::from(&*self.eval, b.clone().data).expect("iterator") {
             // Invert the weight and add to the accumulator
             w = -w;
             self.accumulator.borrow_mut().insert(r, v, w);

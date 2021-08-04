@@ -1,7 +1,7 @@
 // support creating instances (of the same program) on a separate thread in the same address space
 use crate::{
     async_error, broadcast::PubSub, fact, function, send_error, tcp_bind, Batch, Error, Evaluator,
-    Factset, Instance, Node, Port, RecordBatch, Transport,
+    Factset, Instance, Node, Port, RecordSet, Transport,
 };
 use differential_datalog::record::*;
 use std::borrow::Cow;
@@ -36,7 +36,7 @@ pub struct ThreadInstance {
 
 impl Transport for Arc<ThreadInstance> {
     fn send(&self, b: Batch) {
-        for (_, p, weight) in &RecordBatch::from(self.instance.eval.clone(), b) {
+        for (_, p, weight) in &RecordSet::from(self.instance.eval.clone(), b.data) {
             let uuid_record = p.get_struct_field("id").unwrap();
             let uuid = async_error!(self.instance.eval.clone(), Node::from_record(uuid_record));
 

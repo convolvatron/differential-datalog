@@ -3,7 +3,7 @@
 // order to maintain a consistent spanning tree (and a strategy for avoiding storms for temporariliy
 // inconsistent topologies
 
-use crate::{Batch, DDValueBatch, Error, Factset, Node, Port, Transport};
+use crate::{Batch, Error, Factset, Node, Port, Transport, ValueSet};
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -11,13 +11,13 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone, Default)]
 pub struct Broadcast {
     id: Node,
-    accumulator: Arc<Mutex<DDValueBatch>>,
+    accumulator: Arc<Mutex<ValueSet>>,
     count: Arc<AtomicUsize>,
     pub ports: Arc<Mutex<Vec<(Port, usize)>>>,
 }
 
 impl Broadcast {
-    pub fn new(id: Node, accumulator: Arc<Mutex<DDValueBatch>>) -> Arc<Broadcast> {
+    pub fn new(id: Node, accumulator: Arc<Mutex<ValueSet>>) -> Arc<Broadcast> {
         let b = Arc::new(Broadcast {
             id,
             accumulator,

@@ -17,7 +17,7 @@ use tokio::{
 
 use crate::{
     async_error, async_expect_some, fact, function, json_framer::JsonFramer, nega_fact, send_error,
-    Batch, DDValueBatch, Dred, Error, Evaluator, Factset, Instance, Port, RecordBatch, Transport,
+    Batch, Dred, Error, Evaluator, Factset, Instance, Port, RecordSet, Transport, ValueSet,
 };
 
 use differential_datalog::record::*;
@@ -31,7 +31,7 @@ struct AddressListener {
 
 impl Transport for AddressListener {
     fn send(&self, b: Batch) {
-        for (_r, v, _w) in &RecordBatch::from(self.instance.eval.clone(), b) {
+        for (_r, v, _w) in &RecordSet::from(self.instance.eval.clone(), b.data) {
             let destination =
                 async_expect_some!(self.instance.eval, v.get_struct_field("destination"));
             let location = async_expect_some!(self.instance.eval, v.get_struct_field("location"));
@@ -120,13 +120,15 @@ pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
                                 .append(&buffer[0..bytes_input])
                                 .expect("json coding error")
                             {
-                                dred_port.send(Batch::new(
+                                let b = Batch::new(
                                     Factset::Empty(),
                                     Factset::Value(async_error!(
                                         clone2.eval.clone(),
-                                        clone2.eval.clone().deserialize_batch(i)
+                                        clone2.eval.clone().deserialize_value_set(i)
                                     )),
-                                ));
+                                );
+                                println!("tcp input {}", b);
+                                dred_port.send(b);
                             }
                         }
                         Err(_) => {
@@ -179,8 +181,8 @@ impl Transport for TcpPeer {
             };
 
             let eval = tcp_peer.eval.clone();
-            let ddval_batch = async_error!(eval.clone(), DDValueBatch::from(&(*eval), b));
-            let bytes = async_error!(eval.clone(), eval.clone().serialize_batch(ddval_batch));
+            let ddval_set = async_error!(eval.clone(), ValueSet::from(&(*eval), b.data));
+            let bytes = async_error!(eval.clone(), eval.clone().serialize_value_set(ddval_set));
 
             async_error!(
                 eval.clone(),

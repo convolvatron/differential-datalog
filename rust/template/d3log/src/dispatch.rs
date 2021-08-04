@@ -2,7 +2,7 @@
 // relations, and like forwarder, groups up sub-batches based on relation id and routes them
 // out the correct port. Used to hang management relation update ports off the broadcast tree
 
-use crate::{Batch, Error, Evaluator, Factset, Port, RecordBatch, Transport};
+use crate::{Batch, Error, Evaluator, Factset, Port, RecordSet, Transport};
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -19,9 +19,9 @@ pub struct Dispatch {
 
 impl Transport for Dispatch {
     fn send(&self, b: Batch) {
-        let mut output = HashMap::<u64, (Port, RecordBatch)>::new();
+        let mut output = HashMap::<u64, (Port, RecordSet)>::new();
 
-        for (rel, v, weight) in &RecordBatch::from(self.eval.clone(), b.clone()) {
+        for (rel, v, weight) in &RecordSet::from(self.eval.clone(), b.clone().data) {
             if let Some(ports) = { self.handlers.lock().expect("lock").get(&rel) } {
                 for (i, p) in ports {
                     // we can probably do this databatch to recordbatch translation elsewhere and
@@ -29,7 +29,7 @@ impl Transport for Dispatch {
 
                     output
                         .entry(*i)
-                        .or_insert_with(|| (p.clone(), RecordBatch::new()))
+                        .or_insert_with(|| (p.clone(), RecordSet::new()))
                         .1
                         .insert(rel.clone(), v.clone(), weight);
                 }

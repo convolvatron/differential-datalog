@@ -16,9 +16,9 @@ pub struct BatchInternal {
 }
 
 #[derive(Clone)]
-pub struct DDValueBatch(pub Arc<Mutex<BatchInternal>>);
+pub struct ValueSet(pub Arc<Mutex<BatchInternal>>);
 
-impl Display for DDValueBatch {
+impl Display for ValueSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(&"<")?;
         let batch_inner = self.0.lock().unwrap();
@@ -67,7 +67,7 @@ impl<'a> Iterator for BatchIterator<'a> {
     }
 }
 
-impl<'a> IntoIterator for &'a DDValueBatch {
+impl<'a> IntoIterator for &'a ValueSet {
     type Item = (RelId, DDValue, isize);
     type IntoIter = BatchIterator<'a>;
 
@@ -81,23 +81,23 @@ impl<'a> IntoIterator for &'a DDValueBatch {
 }
 
 // clippy says
-impl Default for DDValueBatch {
+impl Default for ValueSet {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl DDValueBatch {
+impl ValueSet {
     pub fn from_delta_map(deltas: DeltaMap<differential_datalog::ddval::DDValue>) -> Batch {
         let n = Arc::new(Mutex::new(BatchInternal {
             deltas,
             timestamp: 0,
         }));
-        Batch::new(Factset::Empty(), Factset::Value(DDValueBatch(n)))
+        Batch::new(Factset::Empty(), Factset::Value(ValueSet(n)))
     }
 
-    pub fn new() -> DDValueBatch {
-        DDValueBatch(Arc::new(Mutex::new(BatchInternal {
+    pub fn new() -> ValueSet {
+        ValueSet(Arc::new(Mutex::new(BatchInternal {
             deltas: DeltaMap::<differential_datalog::ddval::DDValue>::new(),
             timestamp: 0,
         })))
@@ -120,11 +120,11 @@ impl DDValueBatch {
     //        Ok(b)
     //    }
 
-    pub fn from(e: &dyn EvaluatorTrait, b: Batch) -> Result<DDValueBatch, Error> {
-        match b.data {
+    pub fn from(e: &dyn EvaluatorTrait, f: Factset) -> Result<ValueSet, Error> {
+        match f {
             Factset::Value(x) => Ok(x),
             Factset::Record(rb) => {
-                let mut ddval_batch = DDValueBatch::new();
+                let mut ddval_batch = ValueSet::new();
                 let e2 = e.clone();
                 for (r, v, w) in &rb {
                     let rid = e2.id_from_relation_name(r.clone())?;
@@ -132,7 +132,7 @@ impl DDValueBatch {
                 }
                 Ok(ddval_batch)
             }
-            Factset::Empty() => Ok(DDValueBatch::new()),
+            Factset::Empty() => Ok(ValueSet::new()),
         }
     }
 }
