@@ -3,10 +3,11 @@
 // method for that destination
 
 use crate::{
-    async_error, function, send_error, Batch, Dispatch, Evaluator, Factset, Node, Port, RecordSet,
+    async_error, function, send_error, Batch, Dispatch, Evaluator, FactSet, Node, Port, RecordSet,
     Transport, ValueSet,
 };
 use differential_datalog::record::*;
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
@@ -123,15 +124,25 @@ impl Transport for Forwarder {
                     Ok(mut x) => match &x.port {
                         Some(x) => x.clone(),
                         None => {
+                            println!("queuing {} {}", nid, b);
                             x.batches
-                                .push_front(Batch::new(Factset::Empty(), Factset::Value(*b)));
+                                .push_front(Batch::new(FactSet::Empty(), FactSet::Value(*b)));
                             break;
                         }
                     },
                     Err(_) => panic!("lock"),
                 }
             };
-            p.send(Batch::new(Factset::Empty(), Factset::Value(*b)))
+            // xxx better fact macros
+            let m = RecordSet::singleton(
+                Record::NamedStruct(
+                    Cow::from("destination"),
+                    vec![((Cow::from("uuid"), nid.into_record()))],
+                ),
+                1,
+            );
+            println!("sending {} {} {}", nid, m, b);
+            p.send(Batch::new(FactSet::Record(m), FactSet::Value(*b)));
         }
     }
 }

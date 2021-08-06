@@ -3,7 +3,7 @@
 // order to maintain a consistent spanning tree (and a strategy for avoiding storms for temporariliy
 // inconsistent topologies
 
-use crate::{Batch, Error, Factset, Node, Port, Transport, ValueSet};
+use crate::{Batch, Error, FactSet, Node, Port, Transport, ValueSet};
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -45,8 +45,8 @@ impl PubSub for Arc<Broadcast> {
         ports.push((p.clone(), index));
 
         p.clone().send(Batch::new(
-            Factset::Empty(),
-            Factset::Value(self.accumulator.lock().expect("lock").clone()),
+            FactSet::Empty(),
+            FactSet::Value(self.accumulator.lock().expect("lock").clone()),
         ));
 
         Arc::new(Ingress {
@@ -72,8 +72,8 @@ impl PubSub for Arc<Broadcast> {
             (
                 p2.clone(),
                 Batch::new(
-                    Factset::Empty(),
-                    Factset::Value(self.accumulator.lock().expect("lock").clone()),
+                    FactSet::Empty(),
+                    FactSet::Value(self.accumulator.lock().expect("lock").clone()),
                 ),
             )
         };

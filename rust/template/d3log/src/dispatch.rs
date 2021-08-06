@@ -2,7 +2,7 @@
 // relations, and like forwarder, groups up sub-batches based on relation id and routes them
 // out the correct port. Used to hang management relation update ports off the broadcast tree
 
-use crate::{Batch, Error, Evaluator, Factset, Port, RecordSet, Transport};
+use crate::{Batch, Error, Evaluator, FactSet, Port, RecordSet, Transport};
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -36,7 +36,7 @@ impl Transport for Dispatch {
             }
         }
         for (_, (p, b)) in output {
-            p.send(Batch::new(Factset::Empty(), Factset::Record(b)));
+            p.send(Batch::new(FactSet::Empty(), FactSet::Record(b)));
         }
     }
 }

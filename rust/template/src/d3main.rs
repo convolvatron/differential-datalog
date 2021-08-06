@@ -1,12 +1,15 @@
-use crate::{relid2name, relval_from_record, Relations, UpdateSerializer};
+use crate::{relid2name, relval_from_record, Relations};
 use d3log::{
+    batch::Batch,
     broadcast::PubSub,
+    display::Display,
     error::Error,
     fact,
+    factset::FactSet,
     record_set::{read_record_json_file, RecordSet},
     tcp_network::tcp_bind,
     value_set::ValueSet,
-    Batch, DebugPort, Evaluator, EvaluatorTrait, Factset, Instance, Node, Port, Transport,
+    DebugPort, Evaluator, EvaluatorTrait, Instance, Node, Port, Transport,
 };
 use differential_datalog::program::config::{Config, ProfilingConfig};
 
@@ -15,15 +18,10 @@ use differential_datalog::{
     record::RelIdentifier, D3log, DDlog, DDlogDynamic,
 };
 use rand::Rng;
-use serde::{de, de::SeqAccess, de::Visitor, Deserialize, Deserializer};
-use serde::{ser::SerializeTuple, Serialize, Serializer};
 use std::borrow::Cow;
 use std::convert::TryFrom;
-use std::fmt;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-
-use serde_json;
 use tokio::runtime::Runtime;
 
 pub struct Null {}
@@ -44,83 +42,6 @@ pub struct D3 {
     uuid: u128,
     error: Port,
     h: HDDlog,
-}
-
-struct SerializeBatchWrapper {
-    b: ValueSet,
-}
-
-struct BatchVisitor {}
-
-impl<'de> Visitor<'de> for BatchVisitor {
-    type Value = ValueSet;
-
-    // his just formats an error message..in advance?
-    fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "batch")
-    }
-
-    fn visit_seq<E>(self, mut e: E) -> Result<Self::Value, E::Error>
-    where
-        E: SeqAccess<'de>,
-    {
-        let bn = ValueSet::new();
-        {
-            let mut b = bn.0.lock().unwrap();
-
-            let timestamp: Option<u64> = e.next_element()?;
-            match timestamp {
-                Some(timestamp) => b.timestamp = timestamp,
-                None => return Err(de::Error::custom("expected integer timestamp")),
-            }
-
-            let updates: Option<Vec<UpdateSerializer>> = e.next_element()?;
-            match updates {
-                Some(updates) => {
-                    for i in updates {
-                        let u = Update::<DDValue>::from(i);
-                        match u {
-                            // insert method?
-                            Update::Insert { relid, v } => b.deltas.update(relid, &v, 1),
-                            _ => return Err(de::Error::custom("invalid value")),
-                        }
-                    }
-                }
-                None => return Err(de::Error::custom("unable to parse update set")),
-            }
-        }
-        Ok(bn)
-    }
-}
-
-impl<'de> Deserialize<'de> for SerializeBatchWrapper {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: Deserializer<'de>,
-    {
-        let b: ValueSet = deserializer.deserialize_any(BatchVisitor {})?;
-        Ok(SerializeBatchWrapper { b })
-    }
-}
-
-impl Serialize for SerializeBatchWrapper {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
-    where
-        S: Serializer,
-    {
-        let mut tup = serializer.serialize_tuple(3)?; //maybe map at the top level is better
-        let mut updates = Vec::new();
-        let b = &self.b;
-        for (relid, v, _) in b {
-            updates.push(UpdateSerializer::from(Update::Insert {
-                relid,
-                v: v.clone(),
-            }));
-        }
-        tup.serialize_element(&b.0.lock().unwrap().timestamp)?;
-        tup.serialize_element(&updates)?;
-        tup.end()
-    }
 }
 
 impl D3 {
@@ -209,19 +130,6 @@ impl EvaluatorTrait for D3 {
             None => Err(Error::new("unknown relation id".to_string())),
         }
     }
-
-    // xxx - actually we want to parameterize on format, not on internal representation
-    fn serialize_value_set(&self, b: ValueSet) -> Result<Vec<u8>, Error> {
-        let w = SerializeBatchWrapper { b };
-        let encoded = serde_json::to_string(&w)?;
-        Ok(encoded.as_bytes().to_vec())
-    }
-
-    fn deserialize_value_set(&self, s: Vec<u8>) -> Result<ValueSet, Error> {
-        let s = std::str::from_utf8(&s)?;
-        let v: SerializeBatchWrapper = serde_json::from_str(&s)?;
-        Ok(v.b)
-    }
 }
 
 pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
@@ -263,6 +171,9 @@ pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
         instance.broadcast.clone().send(
             fact!(d3_application::Forward, target=>debug_uuid.into_record(), intermediate => uuid.into_record()),
         );
+
+        //xxx feature
+        Display::new(instance.clone(), 8080);
     }
 
     if let Some(f) = inputfile {
@@ -271,7 +182,7 @@ pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
             // fields specified for the target that aren't in the source zre zeroed (?)
             instance
                 .eval_port
-                .send(Batch::new(Factset::Empty(), Factset::Record(b)));
+                .send(Batch::new(FactSet::Empty(), FactSet::Record(b)));
         });
     }
 

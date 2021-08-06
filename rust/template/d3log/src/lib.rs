@@ -1,7 +1,10 @@
+pub mod batch;
 pub mod broadcast;
 mod dispatch;
+pub mod display;
 pub mod dred;
 pub mod error;
+pub mod factset;
 mod forwarder;
 mod json_framer;
 pub mod record_set;
@@ -9,19 +12,19 @@ pub mod tcp_network;
 mod thread_instance;
 pub mod value_set;
 
-use core::fmt;
 use differential_datalog::{ddval::DDValue, record::*, D3logLocationId};
 use std::borrow::Cow;
-use std::fmt::Display;
 use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
 
 use crate::{
+    batch::Batch,
     broadcast::{Broadcast, PubSub},
     dispatch::Dispatch,
     dred::Dred,
     error::Error,
+    factset::FactSet,
     forwarder::Forwarder,
     record_set::RecordSet,
     tcp_network::tcp_bind,
@@ -41,10 +44,6 @@ pub trait EvaluatorTrait {
     fn error(&self, text: Record, line: Record, filename: Record, functionname: Record);
     fn record_from_ddvalue(&self, d: DDValue) -> Result<Record, Error>;
     fn relation_name_from_id(&self, id: usize) -> Result<String, Error>;
-
-    // these is ddvalue/relationid specific
-    fn serialize_value_set(&self, b: ValueSet) -> Result<Vec<u8>, Error>;
-    fn deserialize_value_set(&self, s: Vec<u8>) -> Result<ValueSet, Error>;
 }
 
 #[derive(Clone)]
@@ -60,41 +59,6 @@ pub struct Instance {
 }
 
 pub type Evaluator = Arc<(dyn EvaluatorTrait + Send + Sync)>;
-
-#[derive(Clone)]
-pub enum Factset {
-    Value(ValueSet),
-    Record(RecordSet),
-    Empty(),
-}
-
-#[derive(Clone)]
-pub struct Batch {
-    pub meta: Factset,
-    pub data: Factset,
-}
-
-impl Batch {
-    pub fn new(meta: Factset, data: Factset) -> Batch {
-        Batch { meta, data }
-    }
-}
-
-impl Display for Batch {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&format!("({} {})", self.meta, self.data))
-    }
-}
-
-impl Display for Factset {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Factset::Value(b) => b.fmt(f),
-            Factset::Record(b) => b.fmt(f),
-            Factset::Empty() => f.write_str("<>"),
-        }
-    }
-}
 
 pub trait Transport {
     // since most of these errors are async, we're adopting a general
@@ -217,7 +181,7 @@ impl Instance {
                     instance_clone.eval.eval(x.clone())
                 );
                 println!(
-                    "eval: {} {}",
+                    "eval out: {} {}",
                     instance_clone.eval.clone().myself(),
                     RecordSet::from(instance_clone.eval.clone(), out.clone().data)
                 );

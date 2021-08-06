@@ -2,7 +2,7 @@
 // Batch for interchange between different ddlog programs
 
 #![allow(dead_code)]
-use crate::{error::Error, json_framer::JsonFramer, Evaluator, Factset};
+use crate::{error::Error, json_framer::JsonFramer, Evaluator, FactSet};
 use differential_datalog::record::{CollectionKind, Record};
 use num::bigint::ToBigInt;
 use num::BigInt;
@@ -15,7 +15,7 @@ use std::fs;
 use std::string::String;
 
 use serde::{
-    de, de::SeqAccess, de::Visitor, ser::SerializeTuple, Deserialize, Deserializer, Serialize,
+    de::SeqAccess, de::Visitor, ser::SerializeTuple, Deserialize, Deserializer, Serialize,
     Serializer,
 };
 
@@ -39,15 +39,22 @@ pub fn read_record_json_file(filename: String, cb: &mut dyn FnMut(RecordSet)) ->
 
 #[derive(Clone, Default)]
 pub struct RecordSet {
-    pub timestamp: u64,
     pub records: Vec<(Record, isize)>,
 }
 
 #[macro_export]
+macro_rules! basefact {
+     ( $rel:path,  $($n:ident => $v:expr),* ) => {
+         Record::NamedStruct(
+             Cow::from(stringify!($rel).to_string()),
+             vec![$((Cow::from(stringify!($n)), $v),)*]), 1}
+     }
+
+#[macro_export]
 macro_rules! fact {
     ( $rel:path,  $($n:ident => $v:expr),* ) => {
-        Batch::new(Factset::Empty(),
-                   Factset::Record(RecordSet::singleton(
+        Batch::new(FactSet::Empty(),
+                   FactSet::Record(RecordSet::singleton(
                        Record::NamedStruct(
                            Cow::from(stringify!($rel).to_string()),
                            vec![$((Cow::from(stringify!($n)), $v),)*]), 1)))}
@@ -56,8 +63,8 @@ macro_rules! fact {
 #[macro_export]
 macro_rules! nega_fact {
     ( $rel:path,  $($n:ident => $v:expr),* ) => {
-        Batch::new(Factset::Empty(),
-                   Factset::Record(RecordSet::singleton(
+        Batch::new(FactSet::Empty(),
+                   FactSet::Record(RecordSet::singleton(
                        Record::NamedStruct(
                            Cow::from(stringify!($rel).to_string()),
                            vec![$((Cow::from(stringify!($n)), $v),)*]), -1)))
@@ -167,11 +174,6 @@ impl<'de> Visitor<'de> for RecordSetVisitor {
     {
         {
             let mut bn = RecordSet::new();
-            let timestamp: Option<u64> = e.next_element()?;
-            match timestamp {
-                Some(timestamp) => bn.timestamp = timestamp,
-                None => return Err(de::Error::custom("expected integer timestamp")),
-            }
 
             let records: Option<HashMap<String, Vec<HashMap<String, Value>>>> = e.next_element()?;
             match records {
@@ -218,7 +220,7 @@ impl Serialize for RecordSet {
     {
         let mut m = HashMap::<String, Vec<HashMap<String, Record>>>::new();
         let mut tup = serializer.serialize_tuple(2)?;
-        tup.serialize_element(&self.timestamp)?;
+
         // need to encode w !
         for (v, _w) in &self.records {
             match v {
@@ -251,14 +253,12 @@ impl Serialize for RecordSet {
 impl RecordSet {
     pub fn new() -> RecordSet {
         RecordSet {
-            timestamp: 0,
             records: Vec::new(),
         }
     }
 
     pub fn singleton(rec: Record, weight: isize) -> RecordSet {
         RecordSet {
-            timestamp: 0,
             records: vec![(rec, weight)],
         }
     }
@@ -270,9 +270,9 @@ impl RecordSet {
 
     // tried to use impl From<Batch> for RecordSet, but no error path, other type issues
     // why no err?
-    pub fn from(eval: Evaluator, f: Factset) -> RecordSet {
+    pub fn from(eval: Evaluator, f: FactSet) -> RecordSet {
         match f {
-            Factset::Value(x) => {
+            FactSet::Value(x) => {
                 let mut rb = RecordSet::new();
                 for (record, val, weight) in &x {
                     let rel_name = eval.clone().relation_name_from_id(record).unwrap();
@@ -287,8 +287,8 @@ impl RecordSet {
                 }
                 rb
             }
-            Factset::Record(x) => x,
-            Factset::Empty() => RecordSet::new(),
+            FactSet::Record(x) => x,
+            FactSet::Empty() => RecordSet::new(),
         }
     }
 }

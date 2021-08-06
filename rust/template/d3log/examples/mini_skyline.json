@@ -1,0 +1,9 @@
+[0,
+ {"Fact":[{"x":{"Serialized":["Bigint","1"]},"k":{"Serialized":["Bigint","1"]}},
+          {"x":{"Serialized":["Bigint","2"]},"k":{"Serialized":["Bigint","2"]}},
+          {"x":{"Serialized":["Bigint","3"]},"k":{"Serialized":["Bigint","2"]}},
+          {"x":{"Serialized":["Bigint","4"]},"k":{"Serialized":["Bigint","3"]}},
+          {"x":{"Serialized":["Bigint","5"]},"k":{"Serialized":["Bigint","3"]}},
+          {"x":{"Serialized":["Bigint","6"]},"k":{"Serialized":["Bigint","3"]}}
+]}]
+

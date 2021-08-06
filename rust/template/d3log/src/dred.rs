@@ -3,7 +3,7 @@
 // 1) Enumerate the performance bottlenecks on the current DRED
 // 2) Write tests (Both in module and global)
 
-use crate::{Batch, Evaluator, Factset, Port, Transport, ValueSet};
+use crate::{Batch, Evaluator, FactSet, Port, Transport, ValueSet};
 use std::cell::RefCell;
 use std::sync::Arc;
 
@@ -29,8 +29,8 @@ impl Dred {
 
     pub fn close(&self) {
         let batch = Batch::new(
-            Factset::Empty(),
-            Factset::Value(self.accumulator.borrow().clone()),
+            FactSet::Empty(),
+            FactSet::Value(self.accumulator.borrow().clone()),
         );
         self.out_port.send(batch);
     }

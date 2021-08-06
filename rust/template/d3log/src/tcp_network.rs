@@ -17,7 +17,7 @@ use tokio::{
 
 use crate::{
     async_error, async_expect_some, fact, function, json_framer::JsonFramer, nega_fact, send_error,
-    Batch, Dred, Error, Evaluator, Factset, Instance, Port, RecordSet, Transport, ValueSet,
+    Batch, Dred, Error, Evaluator, FactSet, Instance, Port, RecordSet, Transport,
 };
 
 use differential_datalog::record::*;
@@ -120,13 +120,7 @@ pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
                                 .append(&buffer[0..bytes_input])
                                 .expect("json coding error")
                             {
-                                let b = Batch::new(
-                                    Factset::Empty(),
-                                    Factset::Value(async_error!(
-                                        clone2.eval.clone(),
-                                        clone2.eval.clone().deserialize_value_set(i)
-                                    )),
-                                );
+                                let b = async_error!(clone2.eval.clone(), Batch::deserialize(i));
                                 println!("tcp input {}", b);
                                 dred_port.send(b);
                             }
@@ -169,20 +163,26 @@ impl Transport for TcpPeer {
         let tcp_inner_clone = self.tcp_inner.clone();
         // xxx - do these join handles need to be collected and waited upon for
         // resource recovery?
+        println!("tcp out {}", b);
         self.rt.spawn(async move {
             let mut tcp_peer = tcp_inner_clone.lock().await;
 
             if tcp_peer.stream.is_none() {
+                println!("connecting {}", tcp_peer.address);
                 // xxx use async_error
                 tcp_peer.stream = match TcpStream::connect(tcp_peer.address).await {
-                    Ok(x) => Some(Arc::new(Mutex::new(x))),
+                    Ok(x) => {
+                        println!("connected: {}", tcp_peer.address);
+                        Some(Arc::new(Mutex::new(x)))
+                    }
                     Err(_x) => panic!("connection failure {}", tcp_peer.address),
                 };
             };
 
             let eval = tcp_peer.eval.clone();
-            let ddval_set = async_error!(eval.clone(), ValueSet::from(&(*eval), b.data));
-            let bytes = async_error!(eval.clone(), eval.clone().serialize_value_set(ddval_set));
+            let bytes = async_error!(eval.clone(), b.clone().serialize());
+
+            println!("out: {}", std::str::from_utf8(&bytes).expect("jig"));
 
             async_error!(
                 eval.clone(),
