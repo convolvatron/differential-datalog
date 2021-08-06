@@ -109,6 +109,7 @@ impl Transport for Forwarder {
         let mut output = HashMap::<Node, Box<DDValueBatch>>::new();
 
         for (rel, v, weight) in &DDValueBatch::from(&(*self.eval), b).expect("iterator") {
+            println!("uuid {} forwarder v {}", self.eval.clone().myself(), v); 
             if let Some((loc_id, in_rel, inner_val)) = self.eval.localize(rel, v.clone()) {
                 output
                     .entry(loc_id)
@@ -137,6 +138,7 @@ impl Transport for Forwarder {
                     Err(_) => panic!("lock"),
                 }
             };
+            println!("uuid {} nid {} b {}", self.eval.clone().myself(), nid, b.clone()); 
             p.send(Batch::Value(b.deref().clone()))
         }
     }

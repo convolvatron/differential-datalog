@@ -3,9 +3,16 @@ use d3log::{
     ddvalue_batch::DDValueBatch,
     error::Error,
     fact,
-    record_batch::{read_record_json_file, serialize_record_batch, RecordBatch},
+    record_batch::{read_record_json_file, serialize_record_batch, RecordBatch, deserialize_record_batch},
     tcp_network::tcp_bind,
     Batch, Evaluator, EvaluatorTrait, Instance, Node, Port, Transport,
+    process::{MANAGEMENT_INPUT_FD, MANAGEMENT_OUTPUT_FD, FileDescriptorPort},
+    broadcast::PubSub,
+    async_error,
+    send_error,
+    function,
+        json_framer::JsonFramer,
+    process::read_output,
 };
 use differential_datalog::program::config::{Config, ProfilingConfig};
 
@@ -24,6 +31,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json;
 use tokio::runtime::Runtime;
+use tokio_fd::AsyncFd;
+use tokio::sync::Mutex as AsyncMutex;
 
 pub struct Null {}
 impl Transport for Null {
@@ -247,9 +256,10 @@ pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
     let rt = Arc::new(Runtime::new()?);
     let instance = Instance::new(rt.clone(), Arc::new(d), uuid)?;
 
+    println!("calling tcp_bind: {}", uuid);
     tcp_bind(instance.clone())?;
     if is_parent {
-        let debug_uuid = u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>());
+        /*let debug_uuid = u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>());
         // batch union?
         instance
             .broadcast
@@ -257,7 +267,54 @@ pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
             .send(fact!(d3_application::Stdout, target=>debug_uuid.into_record()));
         instance.broadcast.clone().send(
             fact!(d3_application::Forward, target=>debug_uuid.into_record(), intermediate => uuid.into_record()),
-        );
+        );*/
+    } else {
+        // does this really belong here?
+        println!("{} subscribe for fdport", uuid);
+
+        instance.clone().rt.enter();
+        let instance_clone = instance.clone();
+        let instance_clone2 = instance.clone();
+        instance.rt.block_on(async move {
+            let management_from_parent = instance_clone.broadcast.clone().subscribe(Arc::new(FileDescriptorPort {
+                management: instance_clone.broadcast.clone() as Port,
+                eval: instance_clone.eval.clone(),
+                fd: Arc::new(AsyncMutex::new(AsyncFd::try_from(MANAGEMENT_OUTPUT_FD).expect("asyncfd"))),
+                rt: instance_clone.rt.clone(),
+            }));
+
+            instance_clone.rt.spawn(async {
+                
+                let instance_clone3 = instance_clone2.clone();
+                let instance_clone4 = instance_clone2.clone();
+                let mut jf = JsonFramer::new();
+                async_error!(
+                    instance_clone3.clone().eval.clone(),
+                    read_output(MANAGEMENT_INPUT_FD, move |b: &[u8]| {
+                        for i in async_error!(instance_clone2.clone().eval.clone(), jf.append(b)) {
+                            let v = async_error!(
+                                instance_clone2.clone().eval.clone(),
+                                deserialize_record_batch(i)
+                                );
+
+                            for (r, f, w) in &RecordBatch::from(instance_clone4.clone().eval.clone(), 
+                                                            v.clone()) {
+                                println!("incoming (from parent) management fact @{} r: {} w: {}", instance_clone4.clone().eval.clone().myself(), r, w);
+                                if let Some(loc) = f.get_struct_field("location") {
+                                    println!("from loc {}", loc);
+                                }
+                                if let Some(dest) = f.get_struct_field("destination") {
+                                    println!("dest {}", dest);
+                                }
+                            }
+                            management_from_parent.clone().send(v);
+                        }
+                    })
+                    .await
+                    );
+            });
+        });
+
     }
 
     if let Some(f) = inputfile {
@@ -273,6 +330,7 @@ pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
         });
     }
 
+    println!("Parking thread {}", uuid);
     loop {
         std::thread::park();
     }

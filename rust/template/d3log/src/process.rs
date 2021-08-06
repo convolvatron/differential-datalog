@@ -31,6 +31,8 @@ use {
     },
     tokio::{io::AsyncReadExt, io::AsyncWriteExt, spawn},
     tokio_fd::AsyncFd,
+    tokio::runtime::Runtime,
+    tokio::sync::Mutex as AsyncMutex,
 };
 
 type Fd = std::os::unix::io::RawFd;
@@ -40,28 +42,29 @@ pub const MANAGEMENT_OUTPUT_FD: Fd = 4;
 
 #[derive(Clone)]
 pub struct FileDescriptorPort {
-    pub fd: Fd,
+    pub fd: Arc<AsyncMutex<AsyncFd>>,
     pub eval: Evaluator,
     pub management: Port,
+    pub rt: Arc<Runtime>,
 }
 
 impl Transport for FileDescriptorPort {
     fn send(&self, b: Batch) {
         let js = async_error!(
             self.eval.clone(),
-            serialize_record_batch(RecordBatch::from(self.eval.clone(), b))
-        );
+            serialize_record_batch(RecordBatch::from(self.eval.clone(), b)));
         // keep this around, would you?
-        let mut pin = async_error!(self.eval.clone(), AsyncFd::try_from(self.fd));
-        spawn(async move { pin.write_all(&js).await });
+        println!("uuid {} asyncfd:: try_from", self.eval.clone().myself());
+        let afd = self.fd.clone();
+        self.rt.spawn(async move { afd.lock().await.write_all(&js).await; });
     }
 }
 
-async fn read_output<F>(fd: Fd, mut callback: F) -> Result<(), Error>
+pub async fn read_output<F>(fd: Fd, mut callback: F) -> Result<(), Error>
 where
     F: FnMut(&[u8]),
 {
-    let mut pin = AsyncFd::try_from(fd)?;
+    let mut pin = AsyncFd::try_from(fd).expect("async fd failed");
     let mut buffer = [0; 1024];
     loop {
         let res = pin.read(&mut buffer).await?;
@@ -128,7 +131,8 @@ impl Child {
             management_to_child: Arc::new(FileDescriptorPort {
                 eval: instance.eval.clone(),
                 management: instance.broadcast.clone(),
-                fd: management_in_w,
+                fd: Arc::new(AsyncMutex::new(AsyncFd::try_from(management_in_w).expect("async fd failed"))),
+                rt: instance.rt.clone(),
             }),
         }
     }
@@ -201,11 +205,15 @@ impl ProcessInstance {
 
                         let sh_management =
                             management_clone.subscribe(
+                                c2.clone().lock().expect("lock").management_to_child.clone());
+                            /*management_clone.subscribe(
                                 Arc::new(FileDescriptorPort {
                                 management: management_clone2.clone(),
                                 eval: eval_clone.clone(),
-                                fd: management_out_r,
-                            }));
+                                fd: Arc::new(AsyncMutex::new(AsyncFd::try_from(management_in_w).expect("async fd failed"))),
+                                rt: rt_clone.clone(), 
+                                
+                            }));*/
 
                         let a = management_clone2.clone();
                         let eval_clone2 = eval_clone.clone();
@@ -221,9 +229,6 @@ impl ProcessInstance {
 
                                     sh_management.clone().send(v);
 
-                                    // XXX assume the child needs to announce something before we recognize it
-                                    // as started. assume its tcp address information so we dont need to
-                                    // implement the join
                                     if first {
                                         c2.clone().lock().expect("lock").report_status();
                                         first = false;
