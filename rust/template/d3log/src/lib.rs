@@ -41,7 +41,7 @@ pub trait EvaluatorTrait {
     fn localize(&self, rel: usize, v: DDValue) -> Option<(Node, usize, DDValue)>;
     fn now(&self) -> u64;
     fn myself(&self) -> Node;
-    fn error(&self, text: Record, line: Record, filename: Record, functionname: Record);
+    fn error(&self, text: Record, line: Record, filename: Record, functionname: Record, uuid: Record);
     fn record_from_ddvalue(&self, d: DDValue) -> Result<Record, Error>;
     fn relation_name_from_id(&self, id: usize) -> Result<String, Error>;
 

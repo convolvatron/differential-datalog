@@ -108,6 +108,7 @@ macro_rules! send_error {
             std::line!().into_record(),
             std::file!().into_record(),
             function!().into_record(),
+            $e.clone().myself().into_record(),
         );
     };
 }
