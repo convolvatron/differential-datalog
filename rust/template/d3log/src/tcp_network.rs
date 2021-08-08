@@ -114,7 +114,7 @@ pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
                 let mut buffer = [0; 64];
                 loop {
                     // xxx - remove socket from peer table on error and post notification
-                    match sclone.lock().await.read(&mut buffer).await {
+                    let bytes_input = match sclone.lock().await.read(&mut buffer).await {
                         Ok(bytes_input) => {
                             for i in jf
                                 .append(&buffer[0..bytes_input])
@@ -125,10 +125,11 @@ pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
                                     clone2.eval.clone().deserialize_batch(i)
                                 )));
                             }
+                            bytes_input
                         }
                         Err(_) => {
                             // call Dred close to retract all the facts
-                            dred.close();
+                            /*dred.close();
                             // Retract the connection status fact too!
                             // good! maybe we can just keep a copy of the original assertion?
                             clone2.broadcast.send(nega_fact!(
@@ -136,7 +137,22 @@ pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
                                     time => clone2.clone().eval.clone().now().into_record(),
                                     me => clone2.clone().uuid.into_record(),
                                     them => clone2.clone().uuid.into_record()));
+                            */
+                            0
                         }
+                    };
+                    if bytes_input == 0 {
+                        println!("Calling dred close ");
+                        dred.close();
+                        // Retract the connection status fact too!
+                        // good! maybe we can just keep a copy of the original assertion?
+                        clone2.broadcast.send(nega_fact!(
+                                    d3_application::ConnectionStatus,
+                                    time => clone2.clone().eval.clone().now().into_record(),
+                                    me => clone2.clone().uuid.into_record(),
+                                    them => clone2.clone().uuid.into_record()));
+
+                        break;
                     }
                 }
             });

@@ -29,12 +29,13 @@ impl Dred {
 
     pub fn close(&self) {
         let batch = Batch::Value(self.accumulator.borrow().clone());
+        self.dump_acc();
         self.out_port.send(batch);
     }
 
-    fn inspect_acc(&self) {
-        for (_r, _v, w) in &*self.accumulator.borrow() {
-            println!("{}", w);
+    fn dump_acc(&self) {
+        for (_r, v, w) in &*self.accumulator.borrow() {
+            println!("v {} w {}", v, w);
         }
     }
 }

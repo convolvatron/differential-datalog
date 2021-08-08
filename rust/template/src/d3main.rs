@@ -1,18 +1,20 @@
 use crate::{relid2name, relval_from_record, Relations, UpdateSerializer};
 use d3log::{
+    async_error,
+    broadcast::PubSub,
     ddvalue_batch::DDValueBatch,
     error::Error,
-    fact,
-    record_batch::{read_record_json_file, serialize_record_batch, RecordBatch, deserialize_record_batch},
+    fact, function,
+    json_framer::JsonFramer,
+    nega_fact,
+    process::read_output,
+    process::{FileDescriptorPort, MANAGEMENT_INPUT_FD, MANAGEMENT_OUTPUT_FD},
+    record_batch::{
+        deserialize_record_batch, read_record_json_file, serialize_record_batch, RecordBatch,
+    },
+    send_error,
     tcp_network::tcp_bind,
     Batch, Evaluator, EvaluatorTrait, Instance, Node, Port, Transport,
-    process::{MANAGEMENT_INPUT_FD, MANAGEMENT_OUTPUT_FD, FileDescriptorPort},
-    broadcast::PubSub,
-    async_error,
-    send_error,
-    function,
-        json_framer::JsonFramer,
-    process::read_output,
 };
 use differential_datalog::program::config::{Config, ProfilingConfig};
 
@@ -31,8 +33,8 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use serde_json;
 use tokio::runtime::Runtime;
-use tokio_fd::AsyncFd;
 use tokio::sync::Mutex as AsyncMutex;
+use tokio_fd::AsyncFd;
 
 pub struct Null {}
 impl Transport for Null {
@@ -155,7 +157,14 @@ impl EvaluatorTrait for D3 {
         self.uuid
     }
 
-    fn error(&self, text: Record, line: Record, filename: Record, functionname: Record, uuid: Record) {
+    fn error(
+        &self,
+        text: Record,
+        line: Record,
+        filename: Record,
+        functionname: Record,
+        uuid: Record,
+    ) {
         let f = fact!(d3_application::Error,
                       text => text,
                       line => line,
@@ -256,6 +265,7 @@ pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
     let rt = Arc::new(Runtime::new()?);
     let instance = Instance::new(rt.clone(), Arc::new(d), uuid)?;
 
+    let instance_clone4 = instance.clone();
     println!("calling tcp_bind: {}", uuid);
     tcp_bind(instance.clone())?;
     if is_parent {
@@ -271,20 +281,25 @@ pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
     } else {
         // does this really belong here?
         println!("{} subscribe for fdport", uuid);
-
+        // XXX: Do we need to really enter?
         instance.clone().rt.enter();
         let instance_clone = instance.clone();
         let instance_clone2 = instance.clone();
         instance.rt.block_on(async move {
-            let management_from_parent = instance_clone.broadcast.clone().subscribe(Arc::new(FileDescriptorPort {
-                management: instance_clone.broadcast.clone() as Port,
-                eval: instance_clone.eval.clone(),
-                fd: Arc::new(AsyncMutex::new(AsyncFd::try_from(MANAGEMENT_OUTPUT_FD).expect("asyncfd"))),
-                rt: instance_clone.rt.clone(),
-            }));
+            let management_from_parent =
+                instance_clone
+                    .broadcast
+                    .clone()
+                    .subscribe(Arc::new(FileDescriptorPort {
+                        management: instance_clone.broadcast.clone() as Port,
+                        eval: instance_clone.eval.clone(),
+                        fd: Arc::new(AsyncMutex::new(
+                            AsyncFd::try_from(MANAGEMENT_OUTPUT_FD).expect("asyncfd"),
+                        )),
+                        rt: instance_clone.rt.clone(),
+                    }));
 
             instance_clone.rt.spawn(async {
-                
                 let instance_clone3 = instance_clone2.clone();
                 let instance_clone4 = instance_clone2.clone();
                 let mut jf = JsonFramer::new();
@@ -295,11 +310,17 @@ pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
                             let v = async_error!(
                                 instance_clone2.clone().eval.clone(),
                                 deserialize_record_batch(i)
-                                );
+                            );
 
-                            for (r, f, w) in &RecordBatch::from(instance_clone4.clone().eval.clone(), 
-                                                            v.clone()) {
-                                println!("incoming (from parent) management fact @{} r: {} w: {}", instance_clone4.clone().eval.clone().myself(), r, w);
+                            for (r, f, w) in
+                                &RecordBatch::from(instance_clone4.clone().eval.clone(), v.clone())
+                            {
+                                println!(
+                                    "incoming (from parent) management fact @{} r: {} w: {}",
+                                    instance_clone4.clone().eval.clone().myself(),
+                                    r,
+                                    w
+                                );
                                 if let Some(loc) = f.get_struct_field("location") {
                                     println!("from loc {}", loc);
                                 }
@@ -311,10 +332,9 @@ pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
                         }
                     })
                     .await
-                    );
+                );
             });
         });
-
     }
 
     if let Some(f) = inputfile {
@@ -328,6 +348,13 @@ pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
             }
             instance.eval_port.send(b);
         });
+    }
+
+    if is_parent {
+        std::thread::sleep(std::time::Duration::from_secs(7));
+        instance_clone4.clone()
+        .dispatch
+        .send(nega_fact!(d3_application::Process, id=> 2u64.into_record(), path => "".to_string().into_record(), management => false.into_record()));
     }
 
     println!("Parking thread {}", uuid);

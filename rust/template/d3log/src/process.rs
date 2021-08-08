@@ -11,16 +11,13 @@ use {
         broadcast::Broadcast,
         broadcast::PubSub,
         error::Error,
-        fact,
+        fact, function,
         json_framer::JsonFramer,
         record_batch::{deserialize_record_batch, serialize_record_batch, RecordBatch},
-        Batch, Evaluator, Port, Transport,
-        Node,
-        function,
-        Instance,
-        send_error,
+        send_error, Batch, Evaluator, Instance, Node, Port, Transport,
     },
     differential_datalog::record::*,
+    nix::sys::signal::*,
     nix::unistd::*,
     std::{
         borrow::Cow,
@@ -29,10 +26,10 @@ use {
         ffi::CString,
         sync::{Arc, Mutex},
     },
-    tokio::{io::AsyncReadExt, io::AsyncWriteExt, spawn},
-    tokio_fd::AsyncFd,
     tokio::runtime::Runtime,
     tokio::sync::Mutex as AsyncMutex,
+    tokio::{io::AsyncReadExt, io::AsyncWriteExt, spawn},
+    tokio_fd::AsyncFd,
 };
 
 type Fd = std::os::unix::io::RawFd;
@@ -52,11 +49,13 @@ impl Transport for FileDescriptorPort {
     fn send(&self, b: Batch) {
         let js = async_error!(
             self.eval.clone(),
-            serialize_record_batch(RecordBatch::from(self.eval.clone(), b)));
+            serialize_record_batch(RecordBatch::from(self.eval.clone(), b))
+        );
         // keep this around, would you?
-        println!("uuid {} asyncfd:: try_from", self.eval.clone().myself());
         let afd = self.fd.clone();
-        self.rt.spawn(async move { afd.lock().await.write_all(&js).await; });
+        self.rt.spawn(async move {
+            afd.lock().await.write_all(&js).await;
+        });
     }
 }
 
@@ -89,22 +88,32 @@ impl Transport for ProcessInstance {
             let uuid = async_error!(self.instance.eval.clone(), Node::from_record(uuid_record));
 
             let mut manager = self.manager.lock().expect("lock");
-            let value = manager
-                .entry(uuid)
-                .or_insert_with(|| (weight, None));
-            let w = value.0;
+            let value = manager.entry(uuid).or_insert_with(|| (0, None));
+            // XXX: Consolidate weights manually?
+            let w = value.0 + weight;
             let child_pid = value.1;
+            value.0 = w;
             if w > 0 {
                 // Start instance if one is not already present
                 if child_pid.is_none() {
-                    self.make_child(p).expect("fork failure");
+                    if let pid = self.make_child(p).expect("fork failure") {
+                        value.1 = Some(pid);
+                        {
+                            for (k, v) in manager.iter() {
+                                println!("child {}, pid {}", k, v.1.unwrap());
+                            }
+                        }
+                    }
                 }
             } else if w <= 0 {
                 // what about other values of weight?
                 // kill if we can find the uuid..i guess and if the total weight is 1
                 if let Some(pid) = child_pid {
-                    // TODO: send SIGKILL to pid and wait for the child?
+                    // send SIGKILL to pid and wait for the child?
+                    println!("killing child with pid {}", pid);
+                    kill(pid, SIGKILL).expect("kill failed");
                     // Update the value to None
+                    value.1 = None;
                 }
             }
         }
@@ -131,7 +140,9 @@ impl Child {
             management_to_child: Arc::new(FileDescriptorPort {
                 eval: instance.eval.clone(),
                 management: instance.broadcast.clone(),
-                fd: Arc::new(AsyncMutex::new(AsyncFd::try_from(management_in_w).expect("async fd failed"))),
+                fd: Arc::new(AsyncMutex::new(
+                    AsyncFd::try_from(management_in_w).expect("async fd failed"),
+                )),
                 rt: instance.rt.clone(),
             }),
         }
@@ -169,7 +180,7 @@ impl ProcessInstance {
     // potnetially addressed with a uuid or a url
 
     // since this is really an async error maybe deliver it here
-    pub fn make_child(&self, process: Record) -> Result<(), Error> {
+    pub fn make_child(&self, process: Record) -> Result<Pid, Error> {
         // ideally we wouldn't allocate the management pair
         // unless we were actually going to use it..really we should have
         // two input relations, one for d3log programs and one for other things
@@ -203,17 +214,9 @@ impl ProcessInstance {
                         let management_clone = management_clone.clone();
                         let management_clone2 = management_clone.clone();
 
-                        let sh_management =
-                            management_clone.subscribe(
-                                c2.clone().lock().expect("lock").management_to_child.clone());
-                            /*management_clone.subscribe(
-                                Arc::new(FileDescriptorPort {
-                                management: management_clone2.clone(),
-                                eval: eval_clone.clone(),
-                                fd: Arc::new(AsyncMutex::new(AsyncFd::try_from(management_in_w).expect("async fd failed"))),
-                                rt: rt_clone.clone(), 
-                                
-                            }));*/
+                        let sh_management = management_clone.subscribe(
+                            c2.clone().lock().expect("lock").management_to_child.clone(),
+                        );
 
                         let a = management_clone2.clone();
                         let eval_clone2 = eval_clone.clone();
@@ -258,7 +261,7 @@ impl ProcessInstance {
                     .lock()
                     .expect("lock")
                     .insert(child, child_obj);
-                Ok(())
+                Ok(child)
             }
 
             Ok(ForkResult::Child) => {
@@ -286,7 +289,8 @@ impl ProcessInstance {
                     return Err(Error::new("malformed process record".to_string()));
                 }
 
-                Ok(())
+                // XXX: should never reach
+                panic!("exec failed?");
             }
             Err(_) => {
                 panic!("Fork failed!");
