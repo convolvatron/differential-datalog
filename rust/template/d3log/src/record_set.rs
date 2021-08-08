@@ -166,6 +166,7 @@ impl<'de> Visitor<'de> for RecordSetVisitor {
         E: MapAccess<'de>,
     {
         {
+            println!("b");
             let mut bn = RecordSet {
                 records: Vec::new(),
             };
@@ -191,6 +192,7 @@ impl<'de> Deserialize<'de> for RecordSet {
     where
         D: Deserializer<'de>,
     {
+        println!("a");
         let b: RecordSet = deserializer.deserialize_map(RecordSetVisitor {})?;
         Ok(b)
     }
@@ -205,7 +207,7 @@ impl Serialize for RecordSet {
 
         for (v, w) in &self.records {
             if let Record::NamedStruct(n, v) = v {
-                let mut f = rels.entry(n).or_insert(Vec::new());
+                let f = rels.entry(n).or_insert(Vec::new());
                 f.push((v, w))
             }
         }

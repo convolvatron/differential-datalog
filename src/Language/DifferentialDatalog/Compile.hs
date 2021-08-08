@@ -253,6 +253,7 @@ rustLibFiles =
         , ("d3log/src/factset.rs"                                 , $(embedFile "rust/template/d3log/src/factset.rs"))        
         , ("d3log/src/json_framer.rs"                             , $(embedFile "rust/template/d3log/src/json_framer.rs"))
         , ("d3log/src/lib.rs"                                     , $(embedFile "rust/template/d3log/src/lib.rs"))
+        , ("d3log/src/process.rs"                                 , $(embedFile "rust/template/d3log/src/process.rs"))        
         , ("d3log/src/record_set.rs"                              , $(embedFile "rust/template/d3log/src/record_set.rs"))
         , ("d3log/src/tcp_network.rs"                             , $(embedFile "rust/template/d3log/src/tcp_network.rs"))
         , ("d3log/src/thread_instance.rs"                         , $(embedFile "rust/template/d3log/src/thread_instance.rs"))                

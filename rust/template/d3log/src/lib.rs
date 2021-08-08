@@ -7,6 +7,7 @@ pub mod error;
 pub mod factset;
 mod forwarder;
 mod json_framer;
+pub mod process;
 pub mod record_set;
 pub mod tcp_network;
 mod thread_instance;
@@ -26,6 +27,7 @@ use crate::{
     error::Error,
     factset::FactSet,
     forwarder::Forwarder,
+    process::ProcessInstance,
     record_set::RecordSet,
     tcp_network::tcp_bind,
     thread_instance::ThreadInstance,
@@ -201,8 +203,10 @@ impl Instance {
 
         broadcast.clone().subscribe(instance.eval_port.clone());
 
-        ThreadInstance::new(instance.clone(), new_evaluator)?;
+        ThreadInstance::new(instance.clone(), new_evaluator.clone())?;
+        ProcessInstance::new(instance.clone(), new_evaluator.clone())?;
 
+        // xxx - command line option to dump management relations
         //        broadcast
         //            .clone()
         //            .subscribe(Arc::new(DebugPort { eval: eval.clone() }));

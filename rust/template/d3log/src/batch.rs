@@ -27,7 +27,7 @@ impl Batch {
     pub fn format(self, eval: Evaluator) -> String {
         let mut output = String::new();
         for (_r, f, w) in &RecordSet::from(eval.clone(), self.data) {
-            fmt::write(&mut output, format_args!("{} {}", f, w)).expect("fmt");
+            fmt::write(&mut output, format_args!("{} {}\n", f, w)).expect("fmt");
         }
         output
     }
