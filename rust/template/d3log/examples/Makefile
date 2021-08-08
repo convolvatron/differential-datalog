@@ -18,7 +18,7 @@ compile:
 	(cd mini_skyline_ddlog ; cargo build --features distribution)
 
 start: 
-	./mini_skyline_ddlog/target/debug/mini_skyline_cli -i mini_skyline.json 
+	./mini_skyline_ddlog/target/debug/mini_skyline_cli -m -i mini_skyline.json 
 
 program_dred: 
 	$(DDLOG) --no-staticlib --dynlib --action compile -L$(ROOT)/lib -L.. --d3log -i dred_test.dl

@@ -6,7 +6,7 @@ pub mod dred;
 pub mod error;
 pub mod factset;
 mod forwarder;
-mod json_framer;
+pub mod json_framer;
 pub mod process;
 pub mod record_set;
 pub mod tcp_network;

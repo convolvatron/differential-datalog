@@ -108,8 +108,12 @@ impl Transport for Forwarder {
     fn send(&self, b: Batch) {
         let mut output = HashMap::<Node, Box<ValueSet>>::new();
 
-        for (rel, v, weight) in &(ValueSet::from(&(*self.eval), b.data).expect("iterator")) {
+        println!("forwarder: {}", b.clone().format(self.eval.clone()));
+
+        for (rel, v, weight) in &(ValueSet::from(&(*self.eval), b.clone().data).expect("iterator"))
+        {
             if let Some((loc_id, in_rel, inner_val)) = self.eval.localize(rel, v.clone()) {
+                println!("localiszed {}", loc_id);
                 output
                     .entry(loc_id)
                     .or_insert_with(|| Box::new(ValueSet::new()))
@@ -117,8 +121,9 @@ impl Transport for Forwarder {
                     .insert(in_rel, inner_val, weight);
             }
         }
-
+        println!("forwarder complete: {}", b.clone());
         for (nid, b) in output.drain() {
+            println!("fnid: {}", nid);
             let p = {
                 match self.lookup(nid).lock() {
                     Ok(mut x) => match &x.port {

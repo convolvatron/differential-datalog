@@ -163,7 +163,6 @@ impl Transport for TcpPeer {
         let tcp_inner_clone = self.tcp_inner.clone();
         // xxx - do these join handles need to be collected and waited upon for
         // resource recovery?
-        println!("tcp out {}", b);
         self.rt.spawn(async move {
             let mut tcp_peer = tcp_inner_clone.lock().await;
 
@@ -182,7 +181,11 @@ impl Transport for TcpPeer {
             let eval = tcp_peer.eval.clone();
             let bytes = async_error!(eval.clone(), b.clone().serialize());
 
-            println!("out: {}", std::str::from_utf8(&bytes).expect("jig"));
+            println!(
+                "tcpout: {} -> {}",
+                b.clone(),
+                std::str::from_utf8(&bytes).expect("jig")
+            );
 
             async_error!(
                 eval.clone(),

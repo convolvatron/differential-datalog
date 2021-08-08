@@ -1,28 +1,38 @@
 use crate::{relid2name, relval_from_record, Relations};
 use d3log::{
+    async_error,
     batch::Batch,
     broadcast::PubSub,
     display::Display,
     error::Error,
     fact,
     factset::FactSet,
+    function,
+    json_framer::JsonFramer,
+    process::{read_output, FileDescriptorPort, MANAGEMENT_INPUT_FD, MANAGEMENT_OUTPUT_FD},
     record_set::{read_record_json_file, RecordSet},
+    send_error,
     tcp_network::tcp_bind,
     value_set::ValueSet,
     DebugPort, Evaluator, EvaluatorTrait, Instance, Node, Port, Transport,
 };
-use differential_datalog::program::config::{Config, ProfilingConfig};
-
 use differential_datalog::{
-    api::HDDlog, ddval::DDValue, program::Update, record::IntoRecord, record::Record,
-    record::RelIdentifier, D3log, DDlog, DDlogDynamic,
+    api::HDDlog,
+    ddval::DDValue,
+    program::config::{Config, ProfilingConfig},
+    program::Update,
+    record::IntoRecord,
+    record::Record,
+    record::RelIdentifier,
+    D3log, DDlog, DDlogDynamic,
 };
 use rand::Rng;
 use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::sync::Arc;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::runtime::Runtime;
+use tokio::{runtime::Runtime, sync::Mutex as AsyncMutex};
+use tokio_fd::AsyncFd;
 
 pub struct Null {}
 impl Transport for Null {
@@ -132,7 +142,7 @@ impl EvaluatorTrait for D3 {
     }
 }
 
-pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
+pub fn start_d3log(debug_broadcast: bool, inputfile: Option<String>) -> Result<(), Error> {
     let (uuid, is_parent) = if let Some(uuid) = std::env::var_os("uuid") {
         if let Some(uuid) = uuid.to_str() {
             let my_uuid = uuid.parse::<u128>().unwrap();
@@ -156,10 +166,11 @@ pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
 
     tcp_bind(instance.clone())?;
 
-    // xxx under a command line flag
-    instance.broadcast.clone().subscribe(Arc::new(DebugPort {
-        eval: instance.eval.clone(),
-    }));
+    if debug_broadcast {
+        instance.broadcast.clone().subscribe(Arc::new(DebugPort {
+            eval: instance.eval.clone(),
+        }));
+    }
 
     if is_parent {
         let debug_uuid = u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>());
@@ -174,6 +185,62 @@ pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
 
         //xxx feature
         Display::new(instance.clone(), 8080);
+    } else {
+        // does this really belong here?
+        println!("{} subscribe for fdport", uuid);
+
+        let instance_clone = instance.clone();
+        let instance_clone2 = instance.clone();
+        instance.rt.block_on(async move {
+            let management_from_parent =
+                instance_clone
+                    .broadcast
+                    .clone()
+                    .subscribe(Arc::new(FileDescriptorPort {
+                        instance: instance_clone.clone(),
+                        fd: Arc::new(AsyncMutex::new(
+                            AsyncFd::try_from(MANAGEMENT_OUTPUT_FD).expect("asyncfd"),
+                        )),
+                    }));
+
+            instance_clone.rt.spawn(async {
+                let instance_clone3 = instance_clone2.clone();
+                let instance_clone4 = instance_clone2.clone();
+                let mut jf = JsonFramer::new();
+                async_error!(
+                    instance_clone3.clone().eval.clone(),
+                    read_output(MANAGEMENT_INPUT_FD, move |b: &[u8]| {
+                        let x = async_error!(instance_clone2.clone().eval.clone(), jf.append(b));
+                        for i in x {
+                            let v = async_error!(
+                                instance_clone2.clone().eval.clone(),
+                                Batch::deserialize(i)
+                            );
+
+                            for (r, f, w) in &RecordSet::from(
+                                instance_clone4.clone().eval.clone(),
+                                v.clone().data,
+                            ) {
+                                println!(
+                                    "incoming (from parent) management fact @{} r: {} w: {}",
+                                    instance_clone4.clone().eval.clone().myself(),
+                                    r,
+                                    w
+                                );
+                                if let Some(loc) = f.get_struct_field("location") {
+                                    println!("from loc {}", loc);
+                                }
+                                if let Some(dest) = f.get_struct_field("destination") {
+                                    println!("dest {}", dest);
+                                }
+                            }
+                            management_from_parent.clone().send(v);
+                        }
+                    })
+                    .await
+                );
+            });
+        });
     }
 
     if let Some(f) = inputfile {

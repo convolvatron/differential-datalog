@@ -33,19 +33,15 @@ pub const MANAGEMENT_OUTPUT_FD: Fd = 4;
 #[derive(Clone)]
 pub struct FileDescriptorPort {
     pub fd: Arc<AsyncMutex<AsyncFd>>,
-    pub eval: Evaluator,
-    pub management: Port,
-    pub rt: Arc<Runtime>,
+    pub instance: Arc<Instance>,
 }
 
 impl Transport for FileDescriptorPort {
     fn send(&self, b: Batch) {
-        let js = async_error!(self.eval.clone(), serde_json::to_string(&b));
-        // keep this around, would you?
-        println!("uuid {} asyncfd:: try_from", self.eval.clone().myself());
+        let js = async_error!(self.instance.eval.clone(), serde_json::to_string(&b));
         let afd = self.fd.clone();
-        let e = self.eval.clone();
-        self.rt.spawn(async move {
+        let e = self.instance.eval.clone();
+        self.instance.rt.spawn(async move {
             async_error!(e, afd.lock().await.write_all(&js.as_bytes()).await);
         });
     }
@@ -102,12 +98,9 @@ impl Transport for ProcessInstance {
 
 struct Child {
     uuid: u128,
-    eval: Evaluator,
-    #[allow(dead_code)]
     pid: Pid,
+    eval: Evaluator,
     management: Port,
-    #[allow(dead_code)]
-    management_to_child: Port,
 }
 
 impl Child {
@@ -117,14 +110,6 @@ impl Child {
             uuid,
             pid,
             management: instance.broadcast.clone(),
-            management_to_child: Arc::new(FileDescriptorPort {
-                eval: instance.eval.clone(),
-                management: instance.broadcast.clone(),
-                fd: Arc::new(AsyncMutex::new(
-                    AsyncFd::try_from(management_in_w).expect("async fd failed"),
-                )),
-                rt: instance.rt.clone(),
-            }),
         }
     }
 
@@ -183,40 +168,34 @@ impl ProcessInstance {
                     management_in_w,
                 )));
 
+                let i2 = self.instance.clone();
                 if process.get_struct_field("management").is_some() {
                     let c2 = child_obj.clone();
-                    let management_clone = self.instance.broadcast.clone();
-                    let rt = self.instance.rt.clone();
-                    let eval_clone = self.instance.eval.clone();
-                    rt.spawn(async move {
+                    i2.clone().rt.spawn(async move {
                         let mut jf = JsonFramer::new();
                         let mut first = true;
-                        let management_clone = management_clone.clone();
-                        let management_clone2 = management_clone.clone();
 
-                        let sh_management = management_clone.subscribe(
-                            c2.clone().lock().expect("lock").management_to_child.clone(),
-                        );
-                        /*management_clone.subscribe(
-                            Arc::new(FileDescriptorPort {
-                            management: management_clone2.clone(),
-                            eval: eval_clone.clone(),
-                            fd: Arc::new(AsyncMutex::new(AsyncFd::try_from(management_in_w).expect("async fd failed"))),
-                            rt: rt_clone.clone(),
+                        println!("settin up the management sub");
+                        let management_to_child = Arc::new(FileDescriptorPort {
+                            instance: i2.clone(),
+                            fd: Arc::new(AsyncMutex::new(
+                                AsyncFd::try_from(management_in_w).expect("async fd failed"),
+                            )),
+                        });
 
-                        }));*/
-
-                        let a = management_clone2.clone();
-                        let eval_clone2 = eval_clone.clone();
+                        let i3 = i2.clone();
                         async_error!(
-                            eval_clone.clone(),
+                            i2.eval.clone(),
                             read_output(management_out_r, move |b: &[u8]| {
-                                for i in async_error!(eval_clone2.clone(), jf.append(b)) {
-                                    let s =
-                                        async_error!(eval_clone2.clone(), std::str::from_utf8(&i));
+                                for i in async_error!(i3.eval.clone(), jf.append(b)) {
+                                    println!(
+                                        "child mgng {}",
+                                        std::str::from_utf8(&i).expect("utf8")
+                                    );
+                                    let s = async_error!(i3.eval.clone(), std::str::from_utf8(&i));
                                     let b: Batch =
-                                        async_error!(eval_clone2.clone(), serde_json::from_str(s));
-                                    sh_management.clone().send(b);
+                                        async_error!(i3.eval.clone(), serde_json::from_str(s));
+                                    i3.broadcast.clone().send(b);
                                     if first {
                                         c2.clone().lock().expect("lock").report_status();
                                         first = false;
@@ -228,7 +207,8 @@ impl ProcessInstance {
                     });
                 }
 
-                self.instance.rt.spawn(async move {
+                let i2 = self.instance.clone();
+                i2.clone().rt.spawn(async move {
                     read_output(standard_out_r, |b: &[u8]| {
                         // utf8 framing issues! - feed this into a relation
                         print!("child {} {}", child, std::str::from_utf8(b).expect(""));
@@ -236,7 +216,7 @@ impl ProcessInstance {
                     .await
                 });
 
-                self.instance.rt.spawn(async move {
+                i2.clone().rt.spawn(async move {
                     read_output(standard_err_r, |b: &[u8]| {
                         println!("child error {}", std::str::from_utf8(b).expect(""));
                     })
