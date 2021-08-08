@@ -37,7 +37,7 @@ output relation ThreadInstance(id: u128)
 
 // Process
 //  we shouldn't be restricting the elf image to files on the local filesystem
-output relation Process(id: u128, path: string, management:bool)
+output relation Process(id: u128, executable: string, management:bool)
 
 
 // Error
