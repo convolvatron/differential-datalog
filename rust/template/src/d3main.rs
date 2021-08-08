@@ -186,9 +186,6 @@ pub fn start_d3log(debug_broadcast: bool, inputfile: Option<String>) -> Result<(
         //xxx feature
         Display::new(instance.clone(), 8080);
     } else {
-        // does this really belong here?
-        println!("{} subscribe for fdport", uuid);
-
         let instance_clone = instance.clone();
         let instance_clone2 = instance.clone();
         instance.rt.block_on(async move {

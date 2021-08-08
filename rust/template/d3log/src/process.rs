@@ -175,7 +175,6 @@ impl ProcessInstance {
                         let mut jf = JsonFramer::new();
                         let mut first = true;
 
-                        println!("settin up the management sub");
                         let management_to_child = Arc::new(FileDescriptorPort {
                             instance: i2.clone(),
                             fd: Arc::new(AsyncMutex::new(

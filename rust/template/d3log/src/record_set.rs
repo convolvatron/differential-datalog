@@ -29,6 +29,7 @@ pub fn read_record_json_file(filename: String, cb: &mut dyn FnMut(RecordSet)) ->
     for i in jf.append(body.as_bytes())?.into_iter() {
         let s = std::str::from_utf8(&i)?;
         let rs: RecordSet = serde_json::from_str(&s)?;
+        println!("{}", serde_json::to_string(&rs)?);
         cb(rs);
     }
     Ok(())
@@ -213,13 +214,15 @@ impl Serialize for RecordSet {
         }
         let mut map = serializer.serialize_map(Some(self.records.len()))?;
         for (r, v) in rels {
+            let mut vs = Vec::new();
             for (v, w) in v {
                 let mut p = HashMap::new();
-                for (k, v) in v {
-                    p.insert(k, record_to_value(v).expect("rtv"));
+                for (k, rec) in v {
+                    p.insert(k, record_to_value(rec).expect("rtv"));
                 }
-                map.serialize_entry(r, &(p, w))?;
+                vs.push((p, w));
             }
+            map.serialize_entry(r, &vs);
         }
         map.end()
     }
