@@ -241,12 +241,11 @@ pub fn start_d3log(debug_broadcast: bool, inputfile: Option<String>) -> Result<(
     }
 
     if let Some(f) = inputfile {
-        match read_record_json_file(f, &mut |b: RecordSet| {
+        match read_record_json_file(f, &mut |rs: RecordSet| {
             // XXX - fields in b that aren't present in the target relation are ignored,
             // fields specified for the target that aren't in the source zre zeroed (?)
-            instance
-                .eval_port
-                .send(Batch::new(FactSet::Empty(), FactSet::Record(b)));
+            let b = Batch::new(FactSet::Empty(), FactSet::Record(rs));
+            instance.eval_port.send(b.clone());
         }) {
             Err(x) => {
                 println!("json err {}", x);

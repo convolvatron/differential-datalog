@@ -3,7 +3,7 @@ use core::fmt;
 use core::fmt::Display;
 
 use serde::{de::SeqAccess, de::Visitor, Deserialize, Deserializer};
-use serde::{ser::SerializeTuple, Serialize, Serializer};
+use serde::{ser::SerializeMap, ser::SerializeTuple, Serialize, Serializer};
 
 #[derive(Clone)]
 pub enum FactSet {
@@ -47,8 +47,11 @@ impl Serialize for FactSet {
     where
         S: Serializer,
     {
-        let tup = serializer.serialize_tuple(2)?;
-        tup.end()
+        match self {
+            FactSet::Record(b) => b.serialize(serializer),
+            FactSet::Value(_) => panic!("serialize value"),
+            FactSet::Empty() => serializer.serialize_map(None)?.end(),
+        }
     }
 }
 
