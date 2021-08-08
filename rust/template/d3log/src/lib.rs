@@ -175,15 +175,21 @@ impl Instance {
         let instance_clone = instance.clone();
         rt.spawn(async move {
             loop {
-                let x = async_error!(instance_clone.eval, erecv.recv());
+                let b = async_error!(instance_clone.eval, erecv.recv());
+
+                println!(
+                    "eval in: {} {}",
+                    instance_clone.eval.clone().myself(),
+                    b.clone().format(instance_clone.eval.clone())
+                );
                 let out = async_error!(
                     instance_clone.eval.clone(),
-                    instance_clone.eval.eval(x.clone())
+                    instance_clone.eval.eval(b.clone())
                 );
                 println!(
                     "eval out: {} {}",
                     instance_clone.eval.clone().myself(),
-                    RecordSet::from(instance_clone.eval.clone(), out.clone().data)
+                    out.clone().format(instance_clone.eval.clone())
                 );
                 instance_clone.dispatch.send(out.clone());
                 instance_clone.forwarder.send(out.clone());

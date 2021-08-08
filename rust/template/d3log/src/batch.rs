@@ -1,4 +1,4 @@
-use crate::{Error, FactSet};
+use crate::{Error, Evaluator, FactSet, RecordSet};
 use core::fmt;
 use core::fmt::Display;
 use serde::{Deserialize, Serialize};
@@ -22,6 +22,14 @@ impl Batch {
 
     pub fn deserialize(buffer: Vec<u8>) -> Result<Batch, Error> {
         return Ok(Batch::new(FactSet::Empty(), FactSet::Empty()));
+    }
+
+    pub fn format(self, eval: Evaluator) -> String {
+        let mut output = String::new();
+        for (_r, f, w) in &RecordSet::from(eval.clone(), self.data) {
+            fmt::write(&mut output, format_args!("{} {}", f, w)).expect("fmt");
+        }
+        output
     }
 }
 

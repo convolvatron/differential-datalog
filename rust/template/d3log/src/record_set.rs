@@ -29,7 +29,6 @@ pub fn read_record_json_file(filename: String, cb: &mut dyn FnMut(RecordSet)) ->
     for i in jf.append(body.as_bytes())?.into_iter() {
         let s = std::str::from_utf8(&i)?;
         let rs: RecordSet = serde_json::from_str(&s)?;
-        println!("zik {}", rs);
         cb(rs);
     }
     Ok(())
