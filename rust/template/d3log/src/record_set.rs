@@ -7,6 +7,10 @@ use differential_datalog::record::{CollectionKind, Record};
 use num::bigint::ToBigInt;
 use num::BigInt;
 use num::ToPrimitive;
+use serde::{
+    de::MapAccess, de::Visitor, ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer,
+};
+use serde_json::{Value, Value::*};
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::fmt;
@@ -14,32 +18,21 @@ use std::fmt::Display;
 use std::fs;
 use std::string::String;
 
-use serde::{
-    de::SeqAccess, de::Visitor, ser::SerializeTuple, Deserialize, Deserializer, Serialize,
-    Serializer,
-};
-
-use serde_json::{Value, Value::*};
+#[derive(Clone, Default)]
+pub struct RecordSet {
+    pub records: Vec<(Record, isize)>,
+}
 
 pub fn read_record_json_file(filename: String, cb: &mut dyn FnMut(RecordSet)) -> Result<(), Error> {
     let body = fs::read_to_string(filename.clone())?;
     let mut jf = JsonFramer::new();
     for i in jf.append(body.as_bytes())?.into_iter() {
-        let k = match deserialize_record_set(i) {
-            Ok(x) => x,
-            Err(x) => {
-                println!("json err {}", x);
-                panic!("z");
-            }
-        };
-        cb(k);
+        let s = std::str::from_utf8(&i)?;
+        let rs: RecordSet = serde_json::from_str(&s)?;
+        println!("zik {}", rs);
+        cb(rs);
     }
     Ok(())
-}
-
-#[derive(Clone, Default)]
-pub struct RecordSet {
-    pub records: Vec<(Record, isize)>,
 }
 
 #[macro_export]
@@ -47,8 +40,7 @@ macro_rules! basefact {
      ( $rel:path,  $($n:ident => $v:expr),* ) => {
          Record::NamedStruct(
              Cow::from(stringify!($rel).to_string()),
-             vec![$((Cow::from(stringify!($n)), $v),)*]), 1}
-     }
+             vec![$((Cow::from(stringify!($n)), $v),)*])}}
 
 #[macro_export]
 macro_rules! fact {
@@ -139,9 +131,9 @@ fn value_to_record(v: Value) -> Result<Record, Error> {
     }
 }
 
-fn record_to_value(r: Record) -> Result<Value, Error> {
+fn record_to_value(r: &Record) -> Result<Value, Error> {
     match r {
-        Record::Bool(b) => Ok(Value::Bool(b)),
+        Record::Bool(b) => Ok(Value::Bool(*b)),
         Record::Int(n) => {
             let num = n
                 .to_bigint()
@@ -152,7 +144,7 @@ fn record_to_value(r: Record) -> Result<Value, Error> {
             Ok(serde_json::Value::Number(serde_json::Number::from(fixed)))
         }
 
-        Record::String(s) => Ok(Value::String(s)),
+        Record::String(s) => Ok(Value::String(s.to_string())),
         Record::Array(_i, _v) => panic!("foo"),
         Record::NamedStruct(_collection_kind, _v) => panic!("bbar"),
         _ => Err(Error::new("unhanded record format".to_string())),
@@ -161,42 +153,34 @@ fn record_to_value(r: Record) -> Result<Value, Error> {
 
 struct RecordSetVisitor {}
 
+type Valueset = Vec<(HashMap<String, Value>, isize)>;
+
 impl<'de> Visitor<'de> for RecordSetVisitor {
     type Value = RecordSet;
 
     fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-        write!(formatter, "batch")
+        write!(formatter, "record set")
     }
 
-    fn visit_seq<E>(self, mut e: E) -> Result<Self::Value, E::Error>
+    fn visit_map<E>(self, mut e: E) -> Result<Self::Value, E::Error>
     where
-        E: SeqAccess<'de>,
+        E: MapAccess<'de>,
     {
         {
-            let mut bn = RecordSet::new();
-
-            let records: Option<HashMap<String, Vec<HashMap<String, Value>>>> = e.next_element()?;
-            match records {
-                Some(r) => {
-                    let mut records = Vec::new();
-                    for (r, valueset) in r.into_iter() {
-                        for fact in valueset {
-                            let mut properties = Vec::new();
-                            for (k, v) in fact {
-                                properties.push((
-                                    Cow::from(k),
-                                    value_to_record(v).expect("value translation"),
-                                ));
-                            }
-                            // xxx weight
-                            records
-                                .push((Record::NamedStruct(Cow::from(r.clone()), properties), 1));
-                        }
+            let mut bn = RecordSet {
+                records: Vec::new(),
+            };
+            while let Some((r, value)) = e.next_entry::<String, Valueset>()? {
+                for (fact, w) in value.into_iter() {
+                    let mut properties = Vec::new();
+                    for (k, v) in fact {
+                        let r: Record = value_to_record(v).expect("cant be a panic");
+                        properties.push((Cow::from(k), r));
                     }
-                    bn.records = records;
+
+                    bn.records
+                        .push((Record::NamedStruct(Cow::from(r.clone()), properties), w));
                 }
-                // can't figure out how to throw an error here Err(Error::new("bad record batch syntax".to_string())),
-                None => panic!("bad record batch syntax"),
             }
             Ok(bn)
         }
@@ -208,7 +192,7 @@ impl<'de> Deserialize<'de> for RecordSet {
     where
         D: Deserializer<'de>,
     {
-        let b: RecordSet = deserializer.deserialize_any(RecordSetVisitor {})?;
+        let b: RecordSet = deserializer.deserialize_map(RecordSetVisitor {})?;
         Ok(b)
     }
 }
@@ -218,35 +202,25 @@ impl Serialize for RecordSet {
     where
         S: Serializer,
     {
-        let mut m = HashMap::<String, Vec<HashMap<String, Record>>>::new();
-        let mut tup = serializer.serialize_tuple(2)?;
+        let mut rels = HashMap::new();
 
-        // need to encode w !
-        for (v, _w) in &self.records {
-            match v {
-                Record::NamedStruct(relname, v) => {
-                    m.entry(relname.to_string()).or_insert_with(Vec::new).push({
-                        // wanted to use map...but some trait bound something something
-                        let mut out = HashMap::<String, Record>::new();
-                        for (k, v) in v {
-                            out.insert(
-                                k.to_string(),
-                                match v {
-                                    Record::Int(x) => {
-                                        Record::Serialized(Cow::from("Bigint"), x.to_string())
-                                    }
-                                    _ => v.clone(),
-                                },
-                            );
-                        }
-                        out
-                    })
-                }
-                _ => panic!("weird stuff in record batch"),
+        for (v, w) in &self.records {
+            if let Record::NamedStruct(n, v) = v {
+                let mut f = rels.entry(n).or_insert(Vec::new());
+                f.push((v, w))
             }
         }
-        tup.serialize_element(&m)?;
-        tup.end()
+        let mut map = serializer.serialize_map(Some(self.records.len()))?;
+        for (r, v) in rels {
+            for (v, w) in v {
+                let mut p = HashMap::new();
+                for (k, v) in v {
+                    p.insert(k, record_to_value(v).expect("rtv"));
+                }
+                map.serialize_entry(r, &(p, w))?;
+            }
+        }
+        map.end()
     }
 }
 
@@ -326,9 +300,4 @@ impl<'a> IntoIterator for &'a RecordSet {
 pub fn serialize_record_set(r: RecordSet) -> Result<Vec<u8>, Error> {
     let encoded = serde_json::to_string(&r)?;
     Ok(encoded.as_bytes().to_vec())
-}
-
-pub fn deserialize_record_set(v: Vec<u8>) -> Result<RecordSet, Error> {
-    let s = std::str::from_utf8(&v)?;
-    Ok(serde_json::from_str(&s)?)
 }

@@ -177,13 +177,19 @@ pub fn start_d3log(inputfile: Option<String>) -> Result<(), Error> {
     }
 
     if let Some(f) = inputfile {
-        read_record_json_file(f, &mut |b: RecordSet| {
+        match read_record_json_file(f, &mut |b: RecordSet| {
             // XXX - fields in b that aren't present in the target relation are ignored,
             // fields specified for the target that aren't in the source zre zeroed (?)
             instance
                 .eval_port
                 .send(Batch::new(FactSet::Empty(), FactSet::Record(b)));
-        });
+        }) {
+            Err(x) => {
+                println!("json err {}", x);
+                panic!("json");
+            }
+            _ => (),
+        }
     }
 
     loop {
