@@ -184,7 +184,8 @@ pub fn start_d3log(debug_broadcast: bool, inputfile: Option<String>) -> Result<(
         );
 
         //xxx feature
-        Display::new(instance.clone(), 8080);
+        let i2 = instance.clone();
+        instance.rt.spawn(async move { Display::new(i2, 8080) });
     } else {
         let instance_clone = instance.clone();
         let instance_clone2 = instance.clone();

@@ -167,7 +167,6 @@ impl<'de> Visitor<'de> for RecordSetVisitor {
         E: MapAccess<'de>,
     {
         {
-            println!("b");
             let mut bn = RecordSet {
                 records: Vec::new(),
             };

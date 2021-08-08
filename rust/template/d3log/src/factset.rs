@@ -37,8 +37,9 @@ impl<'de> Deserialize<'de> for FactSet {
     where
         D: Deserializer<'de>,
     {
-        let b = FactSet::Record(RecordSet::new());
-        Ok(b)
+        // demux type
+        let rs = RecordSet::deserialize(deserializer)?;
+        Ok(FactSet::Record(rs))
     }
 }
 

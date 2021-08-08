@@ -179,6 +179,11 @@ impl Transport for TcpPeer {
             };
 
             let eval = tcp_peer.eval.clone();
+            // no vals today, check back tomorrow
+            let b = Batch::new(
+                FactSet::Record(RecordSet::from(eval.clone(), b.clone().meta)),
+                FactSet::Record(RecordSet::from(eval.clone(), b.clone().data)),
+            );
             let bytes = async_error!(eval.clone(), b.clone().serialize());
 
             println!(

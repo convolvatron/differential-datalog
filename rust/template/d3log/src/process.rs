@@ -38,9 +38,19 @@ pub struct FileDescriptorPort {
 
 impl Transport for FileDescriptorPort {
     fn send(&self, b: Batch) {
-        let js = async_error!(self.instance.eval.clone(), serde_json::to_string(&b));
         let afd = self.fd.clone();
         let e = self.instance.eval.clone();
+
+        // no vals today, check back tomorrow
+        let b = Batch::new(
+            FactSet::Record(RecordSet::from(e.clone(), b.clone().meta)),
+            FactSet::Record(RecordSet::from(e.clone(), b.clone().data)),
+        );
+        println!("Sending {}", b.clone().format(self.instance.eval.clone()));
+        let js = async_error!(
+            self.instance.eval.clone(),
+            serde_json::to_string(&b.clone())
+        );
         self.instance.rt.spawn(async move {
             async_error!(e, afd.lock().await.write_all(&js.as_bytes()).await);
         });
@@ -247,7 +257,8 @@ impl ProcessInstance {
                         let arg0 = CString::new(exec).expect("CString::new failed");
                         let u = format!("uuid={}", id);
                         let env1 = CString::new(u).expect("CString::new failed");
-                        execve(&path, &[arg0], &[env1])?;
+                        let env2 = CString::new("RUST_BACKTRACE=1").expect("CString::new failed");
+                        execve(&path, &[arg0], &[env1, env2])?;
                     }
                 } else {
                     return Err(Error::new("malformed process record".to_string()));
