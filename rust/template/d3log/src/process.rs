@@ -121,7 +121,6 @@ impl Child {
         Self {
             eval: instance.eval.clone(),
             uuid,
-            pid,
             management: instance.broadcast.clone(),
         }
     }

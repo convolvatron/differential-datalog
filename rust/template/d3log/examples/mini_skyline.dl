@@ -4,16 +4,24 @@ import display
 // the path here should actually be an executable, or I suppose a url to one.
 // but here we may be able to use the value of argv[0] to make it
 // slightly less broken
-Process(loc, "/Users/ehoffman/ddev/rust/template/d3log/examples/mini_skyline_ddlog/target/debug/mini_skyline_cli", true) :-  Fact(_, loc).
+Process(loc, "/Users/ehoffman/ddev/rust/template/d3log/examples/mini_skyline_ddlog/target/debug/mini_skyline_cli", true) :-
+             Fact(_, loc).
+             
 input relation Fact(x:u64, k:u128)
 output relation Anchor(x:u64)
 relation PrintMSResult(x:u64, me:D3logLocationId)
 relation MSResult(x:u64, me:D3logLocationId)
 relation LocalizedFact(x:u64)
+relation Dist(n:Vec<D3logLocationId>)
 
-LocalizedFact(x)@(k as u128) :-
-      Fact(x, k),
-      InstanceStatus(_, k, _, _, None).
+Dist(ws) :-
+  Process(loc, _, _),
+  var ws:Vec<D3logLocationId> = loc.group_by(()).to_vec().
+
+LocalizedFact(x)@n:-
+      Fact(x, key),
+      Dist(ws),
+      var n = ws.nth(((key as u64) % ws.len()) as u64).unwrap_or_default().
 
 MSResult(x, y) :- LocalizedFact(x),
                   Myself(y).
