@@ -152,7 +152,6 @@ impl Forwarder {
                 Ok(mut x) => match &x.port {
                     Some(x) => x.clone(),
                     None => {
-                        println!("queuing {} {}", nid, b);
                         x.batches.push_front(b);
                         return Ok(());
                     }
