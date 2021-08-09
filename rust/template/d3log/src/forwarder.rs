@@ -3,8 +3,8 @@
 // method for that destination
 
 use crate::{
-    async_error, function, send_error, Batch, Dispatch, Evaluator, FactSet, Node, Port, RecordSet,
-    Transport, ValueSet,
+    async_error, function, send_error, Batch, Dispatch, Error, Evaluator, FactSet, Node, Port,
+    RecordSet, Transport, ValueSet,
 };
 use differential_datalog::record::*;
 use std::borrow::Cow;
@@ -41,14 +41,22 @@ impl Transport for ForwardingEntryHandler {
 
 struct Under {
     forwarder: Arc<Forwarder>,
+    eval: Evaluator,
     up: Port,
 }
 
 impl Transport for Under {
     fn send(&self, b: Batch) {
-        //for (_r, f, _w) in &RecordSet::from(self.eval.clone(), b.meta) {
-        //if r == "destination" {}
-        //}
+        let f2 = self.forwarder.clone();
+        for (r, f, _w) in &RecordSet::from(self.eval.clone(), b.clone().meta) {
+            if r == "destination" {
+                if let Some(d) = f.get_struct_field("destination") {
+                    let n = async_error!(self.eval, u128::from_record(d));
+                    f2.clone().out(n, b.clone());
+                    return;
+                }
+            }
+        }
         self.up.send(b);
     }
 }
@@ -62,6 +70,7 @@ struct Entry {
 
 pub struct Forwarder {
     eval: Evaluator,
+    // xxx - reader writer lock
     fib: Arc<Mutex<HashMap<Node, Arc<Mutex<Entry>>>>>,
 }
 
@@ -86,6 +95,7 @@ impl Forwarder {
             )
             .expect("register");
         let inp = Arc::new(Under {
+            eval,
             forwarder: f.clone(),
             up: eval_port,
         });
@@ -122,6 +132,33 @@ impl Forwarder {
             self.register(r, p.clone());
         }
     }
+
+    pub fn out(&self, nid: Node, b: Batch) -> Result<(), Error> {
+        let p = {
+            match self.lookup(nid).lock() {
+                Ok(mut x) => match &x.port {
+                    Some(x) => x.clone(),
+                    None => {
+                        println!("queuing {} {}", nid, b);
+                        x.batches.push_front(b);
+                        return Ok(());
+                    }
+                },
+                Err(_) => panic!("lock"),
+            }
+        };
+        // xxx better fact macros - dont need to set this in many cases
+        let m = RecordSet::singleton(
+            Record::NamedStruct(
+                Cow::from("destination"),
+                vec![((Cow::from("uuid"), nid.into_record()))],
+            ),
+            1,
+        );
+        // dont overwrite metadata - augment
+        p.send(Batch::new(FactSet::Record(m), b.data));
+        Ok(())
+    }
 }
 
 use std::ops::DerefMut;
@@ -140,30 +177,8 @@ impl Transport for Forwarder {
                     .insert(in_rel, inner_val, weight);
             }
         }
-        for (nid, b) in output.drain() {
-            let p = {
-                match self.lookup(nid).lock() {
-                    Ok(mut x) => match &x.port {
-                        Some(x) => x.clone(),
-                        None => {
-                            println!("queuing {} {}", nid, b);
-                            x.batches
-                                .push_front(Batch::new(FactSet::Empty(), FactSet::Value(*b)));
-                            break;
-                        }
-                    },
-                    Err(_) => panic!("lock"),
-                }
-            };
-            // xxx better fact macros
-            let m = RecordSet::singleton(
-                Record::NamedStruct(
-                    Cow::from("destination"),
-                    vec![((Cow::from("uuid"), nid.into_record()))],
-                ),
-                1,
-            );
-            p.send(Batch::new(FactSet::Record(m), FactSet::Value(*b)));
+        for (nid, nb) in output.drain() {
+            self.out(nid, Batch::new(b.meta.clone(), FactSet::Value(*nb)));
         }
     }
 }

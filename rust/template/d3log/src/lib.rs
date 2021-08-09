@@ -54,6 +54,7 @@ pub struct Instance {
     pub broadcast: Arc<Broadcast>,
     pub init_batch: Batch,
     pub eval_port: Port,
+    pub under: Port,
     pub eval: Evaluator,
     pub dispatch: Arc<Dispatch>,
     pub forwarder: Arc<Forwarder>,
@@ -172,6 +173,7 @@ impl Instance {
             eval_port: eval_port.clone(),
             init_batch: init_batch.clone(),
             dispatch: dispatch.clone(),
+            under,
             forwarder: forwarder.clone(),
             rt: rt.clone(),
         });

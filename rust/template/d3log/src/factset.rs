@@ -21,7 +21,7 @@ impl<'de> Visitor<'de> for FactSetVisitor {
         write!(formatter, "batch")
     }
 
-    fn visit_seq<E>(self, mut e: E) -> Result<Self::Value, E::Error>
+    fn visit_seq<E>(self, _e: E) -> Result<Self::Value, E::Error>
     where
         E: SeqAccess<'de>,
     {

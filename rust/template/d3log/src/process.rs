@@ -91,9 +91,8 @@ impl Transport for ProcessInstance {
             if w > 0 {
                 // Start instance if one is not already present
                 if child_pid.is_none() {
-                    if let pid = self.make_child(p).expect("fork failure") {
-                        value.1 = Some(pid);
-                    }
+                    let pid = self.make_child(p).expect("fork failure");
+                    value.1 = Some(pid);
                 }
             } else if w <= 0 {
                 // what about other values of weight?
@@ -119,7 +118,7 @@ struct Child {
 }
 
 impl Child {
-    pub fn new(uuid: u128, pid: Pid, instance: Arc<Instance>, management_in_w: Fd) -> Self {
+    pub fn new(uuid: u128, pid: Pid, instance: Arc<Instance>) -> Self {
         Self {
             eval: instance.eval.clone(),
             uuid,
@@ -180,7 +179,6 @@ impl ProcessInstance {
                     u128::from_record(id).unwrap(),
                     child,
                     self.instance.clone(),
-                    management_in_w,
                 )));
 
                 let i2 = self.instance.clone();

@@ -106,7 +106,7 @@ pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
             // in the async move block, it actually gets dropped
             let sclone = Arc::new(Mutex::new(socket));
 
-            let (dred, dred_port) = Dred::new(clone.clone().eval.clone(), clone.eval_port.clone());
+            let (dred, dred_port) = Dred::new(clone.clone().eval.clone(), clone.under.clone());
 
             let clone2 = clone.clone();
             clone.rt.spawn(async move {

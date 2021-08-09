@@ -30,8 +30,8 @@ use rand::Rng;
 use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::sync::Arc;
-use std::time::{SystemTime, UNIX_EPOCH};
-use tokio::{runtime::Runtime, sync::Mutex as AsyncMutex};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use tokio::{runtime::Runtime, sync::Mutex as AsyncMutex, time::sleep};
 use tokio_fd::AsyncFd;
 
 pub struct Null {}
@@ -142,7 +142,11 @@ impl EvaluatorTrait for D3 {
     }
 }
 
-pub fn start_d3log(debug_broadcast: bool, inputfile: Option<String>) -> Result<(), Error> {
+pub fn start_d3log(
+    debug_broadcast: bool,
+    clock: bool,
+    inputfile: Option<String>,
+) -> Result<(), Error> {
     let (uuid, is_parent) = if let Some(uuid) = std::env::var_os("uuid") {
         if let Some(uuid) = uuid.to_str() {
             let my_uuid = uuid.parse::<u128>().unwrap();
@@ -169,6 +173,20 @@ pub fn start_d3log(debug_broadcast: bool, inputfile: Option<String>) -> Result<(
         instance.broadcast.clone().subscribe(Arc::new(DebugPort {
             eval: instance.eval.clone(),
         }));
+    }
+
+    let m = instance.broadcast.clone();
+    if clock {
+        instance.clone().rt.spawn(async move {
+            let when = Duration::from_secs(1);
+            let mut second = 0;
+            loop {
+                sleep(when).await;
+                m.clone()
+                    .send(fact!(d3_application::Clock, seconds=>second.into_record()));
+                second += 1;
+            }
+        });
     }
 
     if is_parent {

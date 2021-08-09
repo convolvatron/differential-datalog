@@ -39,6 +39,10 @@ output relation ThreadInstance(id: u128)
 //  we shouldn't be restricting the elf image to files on the local filesystem
 output relation Process(id: u128, executable: string, management:bool)
 
+// Clock
+//  testing feature to assert a fact every second
+output relation Clock(seconds: usize)
+
 
 // Error
 // a runtime error has been reported by some locale. presence of an error record in the mangement view
