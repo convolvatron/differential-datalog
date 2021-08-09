@@ -43,7 +43,14 @@ pub trait EvaluatorTrait {
     fn localize(&self, rel: usize, v: DDValue) -> Option<(Node, usize, DDValue)>;
     fn now(&self) -> u64;
     fn myself(&self) -> Node;
-    fn error(&self, text: Record, line: Record, filename: Record, functionname: Record);
+    fn error(
+        &self,
+        text: Record,
+        line: Record,
+        filename: Record,
+        functionname: Record,
+        uuid: Record,
+    );
     fn record_from_ddvalue(&self, d: DDValue) -> Result<Record, Error>;
     fn relation_name_from_id(&self, id: usize) -> Result<String, Error>;
 }
@@ -84,6 +91,27 @@ struct EvalPort {
 
 impl Transport for EvalPort {
     fn send(&self, b: Batch) {
+        for (_r, v, _w) in &RecordSet::from(self.eval.clone(), b.data.clone()) {
+            if let Some(text) = v.get_struct_field("text") {
+                println!(
+                    "Error @ node {} -> {} @ {}:{}:{}",
+                    v.get_struct_field("uuid")
+                        .or(Some(&0xbad_ffff_u128.into_record()))
+                        .unwrap(),
+                    text,
+                    v.get_struct_field("filename")
+                        .or(Some(&"unknown.rs".into_record()))
+                        .unwrap(),
+                    v.get_struct_field("functionname")
+                        .or(Some(&"unknown_fn".into_record()))
+                        .unwrap(),
+                    v.get_struct_field("line")
+                        .or(Some(&0u64.into_record()))
+                        .unwrap(),
+                );
+            }
+        }
+
         self.dispatch.send(b.clone());
         let eclone = self.eval.clone();
         let sclone = self.s.clone();

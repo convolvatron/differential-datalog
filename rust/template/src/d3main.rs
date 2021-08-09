@@ -9,6 +9,7 @@ use d3log::{
     factset::FactSet,
     function,
     json_framer::JsonFramer,
+    nega_fact,
     process::{read_output, FileDescriptorPort, MANAGEMENT_INPUT_FD, MANAGEMENT_OUTPUT_FD},
     record_set::{read_record_json_file, RecordSet},
     send_error,
@@ -78,11 +79,18 @@ impl EvaluatorTrait for D3 {
         self.uuid
     }
 
-    fn error(&self, text: Record, line: Record, filename: Record, functionname: Record) {
+    fn error(
+        &self,
+        text: Record,
+        line: Record,
+        filename: Record,
+        functionname: Record,
+        uuid: Record,
+    ) {
         let f = fact!(d3_application::Error,
                       text => text,
                       line => line,
-                      instance => self.uuid.clone().into_record(),
+                      uuid => uuid,
                       filename => filename,
                       functionname => functionname);
         self.error.clone().send(f);

@@ -1,6 +1,6 @@
 import d3_application
 
-input relation Node(id: u128, path: string, management: bool)
+input relation Node(id: u128, executable: string, management: bool)
 
 // Move to dred_test.json to side-step init_batch issue!
 //Node(1, "/opt/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli", true)
@@ -11,7 +11,7 @@ input relation Node(id: u128, path: string, management: bool)
 //ThreadInstance(loc) :- Node(loc).
 
 // to create ProcessInstance
-Process(id, path, management) :- Node(id, path, management).
+Process(id, executable, management) :- Node(id, executable, management).
 
 output relation Final(x: u64)
 
