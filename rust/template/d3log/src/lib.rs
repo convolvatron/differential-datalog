@@ -15,9 +15,9 @@ pub mod value_set;
 
 use differential_datalog::{ddval::DDValue, record::*, D3logLocationId};
 use std::borrow::Cow;
-use std::sync::mpsc::{channel, Sender};
 use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
+use tokio::sync::mpsc::{channel, Receiver, Sender};
 
 use crate::{
     batch::Batch,
@@ -75,18 +75,20 @@ pub type Port = Arc<(dyn Transport + Send + Sync)>;
 
 // shouldn't evaluator just implement Transport?
 struct EvalPort {
+    rt: Arc<tokio::runtime::Runtime>,
     eval: Evaluator,
     dispatch: Port,
-    s: Arc<Mutex<Sender<Batch>>>,
+    s: Sender<Batch>,
 }
 
 impl Transport for EvalPort {
     fn send(&self, b: Batch) {
         self.dispatch.send(b.clone());
-        async_error!(
-            self.eval.clone(),
-            self.s.lock().expect("lock").send(b.clone())
-        );
+        let eclone = self.eval.clone();
+        let sclone = self.s.clone();
+        self.rt.spawn(async move {
+            async_error!(eclone, sclone.send(b.clone()).await);
+        });
     }
 }
 
@@ -149,7 +151,7 @@ impl Instance {
         let broadcast = Broadcast::new(uuid, accumulator.clone());
         let (eval, init_batch) = new_evaluator(uuid, broadcast.clone())?;
         let dispatch = Arc::new(Dispatch::new(eval.clone()));
-        let (esend, erecv) = channel();
+        let (esend, mut erecv) = channel(10);
         let forwarder = Forwarder::new(eval.clone(), dispatch.clone(), broadcast.clone());
 
         broadcast.clone().subscribe(Arc::new(AccumulatePort {
@@ -158,9 +160,10 @@ impl Instance {
         }));
 
         let eval_port = Arc::new(EvalPort {
+            rt: rt.clone(),
             dispatch: dispatch.clone(),
             eval: eval.clone(),
-            s: Arc::new(Mutex::new(esend)),
+            s: esend,
         });
 
         let instance = Arc::new(Instance {
@@ -177,14 +180,15 @@ impl Instance {
         let instance_clone = instance.clone();
         rt.spawn(async move {
             loop {
-                let b = async_error!(instance_clone.eval, erecv.recv());
-
-                let out = async_error!(
-                    instance_clone.eval.clone(),
-                    instance_clone.eval.eval(b.clone())
-                );
-                instance_clone.dispatch.send(out.clone());
-                instance_clone.forwarder.send(out.clone());
+                // this will spin on close
+                if let Some(x) = erecv.recv().await {
+                    let out = async_error!(
+                        instance_clone.eval.clone(),
+                        instance_clone.eval.eval(x.clone())
+                    );
+                    instance_clone.dispatch.send(out.clone());
+                    instance_clone.forwarder.send(out.clone());
+                }
             }
         });
 

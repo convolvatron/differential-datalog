@@ -43,9 +43,10 @@ const JS_BATCH_HANDLER: &[u8] = include_bytes!("display.js");
 async fn on_client(d: Display, stream_mut: AsyncClient) {
     let (tx, mut rx) = channel(100);
 
+    let id = random::<u128>() & ((1 << 63) - 1);
     let b = Browser {
         eval: d.instance.eval.clone(),
-        uuid: random::<u128>(),
+        uuid: id,
         s: tx.clone(),
     };
     d.instance.forwarder.register(b.uuid, Arc::new(b.clone()));

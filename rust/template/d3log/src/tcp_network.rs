@@ -124,11 +124,6 @@ pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
                                     clone2.eval.clone(),
                                     Batch::deserialize(i.clone())
                                 );
-                                println!(
-                                    "tcp input {} {}",
-                                    std::str::from_utf8(&i.clone()).expect("z"),
-                                    b.clone().format(clone2.eval.clone())
-                                );
                                 dred_port.send(b);
                             }
                         }
@@ -188,12 +183,6 @@ impl Transport for TcpPeer {
                 FactSet::Record(RecordSet::from(eval.clone(), b.clone().data)),
             );
             let bytes = async_error!(eval.clone(), b.clone().serialize());
-
-            println!(
-                "tcpout: {} -> {}",
-                b.clone(),
-                std::str::from_utf8(&bytes).expect("jig")
-            );
 
             async_error!(
                 eval.clone(),

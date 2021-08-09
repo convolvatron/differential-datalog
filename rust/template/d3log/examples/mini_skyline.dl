@@ -1,4 +1,5 @@
 import d3_application
+import display
 
 // the path here should actually be an executable, or I suppose a url to one.
 // but here we may be able to use the value of argv[0] to make it
