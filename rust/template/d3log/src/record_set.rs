@@ -219,7 +219,7 @@ impl Serialize for RecordSet {
                 }
                 vs.push((p, w));
             }
-            map.serialize_entry(r, &vs);
+            map.serialize_entry(r, &vs)?;
         }
         map.end()
     }

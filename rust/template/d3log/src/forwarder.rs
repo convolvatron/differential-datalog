@@ -27,12 +27,14 @@ impl Transport for ForwardingEntryHandler {
             );
             let z = f.get_struct_field("intermediate").expect("intermediate");
             let intermediate = async_error!(self.eval, u128::from_record(z));
-            let e = self.forwarder.lookup(intermediate);
-            let mut e2 = { e.lock().expect("lock") };
-            match &e2.port {
-                Some(p) => self.forwarder.register(target, p.clone()),
-                None => {
-                    e2.registrations.push_back(target);
+            if intermediate != self.eval.clone().myself() {
+                let e = self.forwarder.lookup(intermediate);
+                let mut e2 = { e.lock().expect("lock") };
+                match &e2.port {
+                    Some(p) => self.forwarder.register(target, p.clone()),
+                    None => {
+                        e2.registrations.push_back(target);
+                    }
                 }
             }
         }
@@ -50,9 +52,13 @@ impl Transport for Under {
         let f2 = self.forwarder.clone();
         for (r, f, _w) in &RecordSet::from(self.eval.clone(), b.clone().meta) {
             if r == "destination" {
-                if let Some(d) = f.get_struct_field("destination") {
+                if let Some(d) = f.get_struct_field("uuid") {
                     let n = async_error!(self.eval, u128::from_record(d));
-                    f2.clone().out(n, b.clone());
+                    if n == self.eval.clone().myself() {
+                        self.up.send(b);
+                    } else {
+                        async_error!(self.eval, f2.clone().out(n, b.clone()));
+                    }
                     return;
                 }
             }

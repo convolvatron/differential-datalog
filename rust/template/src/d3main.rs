@@ -198,16 +198,25 @@ pub fn start_d3log(
             .broadcast
             .clone()
             .send(fact!(d3_application::Stdout, target=>debug_uuid.into_record()));
+
+        // except me!
         instance.broadcast.clone().send(
             fact!(d3_application::Forward, target=>debug_uuid.into_record(), intermediate => uuid.into_record()),
         );
 
+        instance.forwarder.register(
+            debug_uuid,
+            Arc::new(DebugPort {
+                eval: instance.eval.clone(),
+            }),
+        );
         //xxx feature
         let i2 = instance.clone();
         instance
             .rt
             .spawn(async move { Display::new(i2, 8080).await });
     } else {
+        // xxx - move to process
         let instance_clone = instance.clone();
         let instance_clone2 = instance.clone();
         instance.rt.block_on(async move {

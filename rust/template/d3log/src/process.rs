@@ -112,7 +112,6 @@ impl Transport for ProcessInstance {
 
 struct Child {
     uuid: u128,
-    pid: Pid,
     eval: Evaluator,
     management: Port,
 }
