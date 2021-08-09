@@ -11,6 +11,7 @@ use {
         send_error, Batch, Evaluator, FactSet, Instance, Node, Port, RecordSet, Transport,
     },
     differential_datalog::record::*,
+    nix::sys::signal::*,
     nix::unistd::*,
     std::{
         borrow::Cow,
@@ -46,7 +47,6 @@ impl Transport for FileDescriptorPort {
             FactSet::Record(RecordSet::from(e.clone(), b.clone().meta)),
             FactSet::Record(RecordSet::from(e.clone(), b.clone().data)),
         );
-        println!("Sending {}", b.clone().format(self.instance.eval.clone()));
         let js = async_error!(
             self.instance.eval.clone(),
             serde_json::to_string(&b.clone())
@@ -86,13 +86,15 @@ impl Transport for ProcessInstance {
             let uuid = async_error!(self.instance.eval.clone(), Node::from_record(uuid_record));
 
             let mut manager = self.manager.lock().expect("lock");
-            let value = manager.entry(uuid).or_insert_with(|| (weight, None));
-            let w = value.0;
+            let value = manager.entry(uuid).or_insert_with(|| (0, None));
+            let w = value.0 + weight;
             let child_pid = value.1;
             if w > 0 {
                 // Start instance if one is not already present
                 if child_pid.is_none() {
-                    self.make_child(p).expect("fork failure");
+                    if let pid = self.make_child(p).expect("fork failure") {
+                        value.1 = Some(pid);
+                    }
                 }
             } else if w <= 0 {
                 // what about other values of weight?
@@ -100,6 +102,10 @@ impl Transport for ProcessInstance {
                 if let Some(pid) = child_pid {
                     // TODO: send SIGKILL to pid and wait for the child?
                     // Update the value to None
+                    println!("killing child with pid {}", pid);
+                    kill(pid, SIGKILL).expect("kill failed");
+                    // Update the value to None
+                    value.1 = None;
                 }
             }
         }
@@ -155,7 +161,7 @@ impl ProcessInstance {
     // potnetially addressed with a uuid or a url
 
     // since this is really an async error maybe deliver it here
-    pub fn make_child(&self, process: Record) -> Result<(), Error> {
+    pub fn make_child(&self, process: Record) -> Result<Pid, Error> {
         // ideally we wouldn't allocate the management pair
         // unless we were actually going to use it..really we should have
         // two input relations, one for d3log programs and one for other things
@@ -192,19 +198,18 @@ impl ProcessInstance {
                             )),
                         });
 
+                        let sh_management =
+                            i2.broadcast.clone().subscribe(management_to_child.clone());
+
                         let i3 = i2.clone();
                         async_error!(
                             i2.eval.clone(),
                             read_output(management_out_r, move |b: &[u8]| {
                                 for i in async_error!(i3.eval.clone(), jf.append(b)) {
-                                    println!(
-                                        "child mgng {}",
-                                        std::str::from_utf8(&i).expect("utf8")
-                                    );
                                     let s = async_error!(i3.eval.clone(), std::str::from_utf8(&i));
                                     let b: Batch =
                                         async_error!(i3.eval.clone(), serde_json::from_str(s));
-                                    i3.broadcast.clone().send(b);
+                                    sh_management.clone().send(b);
                                     if first {
                                         c2.clone().lock().expect("lock").report_status();
                                         first = false;
@@ -235,7 +240,7 @@ impl ProcessInstance {
                     .lock()
                     .expect("lock")
                     .insert(child, child_obj);
-                Ok(())
+                Ok(child)
             }
 
             Ok(ForkResult::Child) => {
@@ -263,8 +268,8 @@ impl ProcessInstance {
                 } else {
                     return Err(Error::new("malformed process record".to_string()));
                 }
-
-                Ok(())
+                // XXX: should never reach
+                panic!("exec failed?");
             }
             Err(_) => {
                 panic!("Fork failed!");

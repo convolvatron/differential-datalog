@@ -151,11 +151,10 @@ pub fn start_d3log(debug_broadcast: bool, inputfile: Option<String>) -> Result<(
             panic!("bad uuid");
         }
     } else {
-        // use uuid crate
-        (
-            u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>()),
-            true,
-        )
+        let mut u = u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>());
+        // use uuid crate.. truncate because of json issues
+        u &= (1 << 63) - 1;
+        (u, true)
     };
 
     let d =
@@ -173,7 +172,9 @@ pub fn start_d3log(debug_broadcast: bool, inputfile: Option<String>) -> Result<(
     }
 
     if is_parent {
-        let debug_uuid = u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>());
+        let mut debug_uuid = u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>());
+        // xxx - domain issues with json - do not merge
+        debug_uuid &= (1 << 63) - 1;
         // batch union?
         instance
             .broadcast
@@ -185,7 +186,9 @@ pub fn start_d3log(debug_broadcast: bool, inputfile: Option<String>) -> Result<(
 
         //xxx feature
         let i2 = instance.clone();
-        instance.rt.spawn(async move { Display::new(i2, 8080) });
+        instance
+            .rt
+            .spawn(async move { Display::new(i2, 8080).await });
     } else {
         let instance_clone = instance.clone();
         let instance_clone2 = instance.clone();
@@ -203,7 +206,6 @@ pub fn start_d3log(debug_broadcast: bool, inputfile: Option<String>) -> Result<(
 
             instance_clone.rt.spawn(async {
                 let instance_clone3 = instance_clone2.clone();
-                let instance_clone4 = instance_clone2.clone();
                 let mut jf = JsonFramer::new();
                 async_error!(
                     instance_clone3.clone().eval.clone(),
@@ -214,9 +216,9 @@ pub fn start_d3log(debug_broadcast: bool, inputfile: Option<String>) -> Result<(
                                 instance_clone2.clone().eval.clone(),
                                 Batch::deserialize(i)
                             );
-
+                            /*
                             for (r, f, w) in &RecordSet::from(
-                                instance_clone4.clone().eval.clone(),
+                            instance_clone4.clone().eval.clone(),
                                 v.clone().data,
                             ) {
                                 println!(
@@ -232,6 +234,7 @@ pub fn start_d3log(debug_broadcast: bool, inputfile: Option<String>) -> Result<(
                                     println!("dest {}", dest);
                                 }
                             }
+                            */
                             management_from_parent.clone().send(v);
                         }
                     })

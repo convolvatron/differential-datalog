@@ -121,7 +121,7 @@ impl Transport for DebugPort {
     fn send(&self, b: Batch) {
         // print meta
         for (_r, f, w) in &RecordSet::from(self.eval.clone(), b.data) {
-            println!("{} {} {}", self.eval.clone().myself(), f, w);
+            println!("{} {}", f, w);
         }
     }
 }
@@ -179,19 +179,9 @@ impl Instance {
             loop {
                 let b = async_error!(instance_clone.eval, erecv.recv());
 
-                println!(
-                    "eval in: {} {}",
-                    instance_clone.eval.clone().myself(),
-                    b.clone().format(instance_clone.eval.clone())
-                );
                 let out = async_error!(
                     instance_clone.eval.clone(),
                     instance_clone.eval.eval(b.clone())
-                );
-                println!(
-                    "eval out: {} {}",
-                    instance_clone.eval.clone().myself(),
-                    out.clone().format(instance_clone.eval.clone())
                 );
                 instance_clone.dispatch.send(out.clone());
                 instance_clone.forwarder.send(out.clone());

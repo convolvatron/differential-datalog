@@ -21,7 +21,9 @@ impl Batch {
     }
 
     pub fn deserialize(buffer: Vec<u8>) -> Result<Batch, Error> {
-        return Ok(Batch::new(FactSet::Empty(), FactSet::Empty()));
+        let s = std::str::from_utf8(&buffer)?;
+        let b: Batch = serde_json::from_str(s)?;
+        return Ok(b);
     }
 
     pub fn format(self, eval: Evaluator) -> String {

@@ -120,8 +120,15 @@ pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
                                 .append(&buffer[0..bytes_input])
                                 .expect("json coding error")
                             {
-                                let b = async_error!(clone2.eval.clone(), Batch::deserialize(i));
-                                println!("tcp input {}", b);
+                                let b = async_error!(
+                                    clone2.eval.clone(),
+                                    Batch::deserialize(i.clone())
+                                );
+                                println!(
+                                    "tcp input {} {}",
+                                    std::str::from_utf8(&i.clone()).expect("z"),
+                                    b.clone().format(clone2.eval.clone())
+                                );
                                 dred_port.send(b);
                             }
                         }
@@ -167,13 +174,9 @@ impl Transport for TcpPeer {
             let mut tcp_peer = tcp_inner_clone.lock().await;
 
             if tcp_peer.stream.is_none() {
-                println!("connecting {}", tcp_peer.address);
                 // xxx use async_error
                 tcp_peer.stream = match TcpStream::connect(tcp_peer.address).await {
-                    Ok(x) => {
-                        println!("connected: {}", tcp_peer.address);
-                        Some(Arc::new(Mutex::new(x)))
-                    }
+                    Ok(x) => Some(Arc::new(Mutex::new(x))),
                     Err(_x) => panic!("connection failure {}", tcp_peer.address),
                 };
             };

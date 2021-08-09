@@ -29,7 +29,6 @@ pub fn read_record_json_file(filename: String, cb: &mut dyn FnMut(RecordSet)) ->
     for i in jf.append(body.as_bytes())?.into_iter() {
         let s = std::str::from_utf8(&i)?;
         let rs: RecordSet = serde_json::from_str(&s)?;
-        println!("{}", serde_json::to_string(&rs)?);
         cb(rs);
     }
     Ok(())
@@ -192,7 +191,6 @@ impl<'de> Deserialize<'de> for RecordSet {
     where
         D: Deserializer<'de>,
     {
-        println!("a");
         let b: RecordSet = deserializer.deserialize_map(RecordSetVisitor {})?;
         Ok(b)
     }
