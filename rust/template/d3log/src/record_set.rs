@@ -5,7 +5,6 @@
 use crate::{error::Error, json_framer::JsonFramer, Evaluator, FactSet};
 use differential_datalog::record::{CollectionKind, Record};
 use num::bigint::ToBigInt;
-use num::BigInt;
 use num::ToPrimitive;
 use serde::{
     de::MapAccess, de::Visitor, ser::SerializeMap, Deserialize, Deserializer, Serialize, Serializer,
