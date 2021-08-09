@@ -26,6 +26,36 @@ fn scan(e: Evaluator, f: FactSet, s: String) -> Option<Record> {
     None
 }
 
+// this could have been relational i guess
+fn path(e: Evaluator, f: FactSet, s: String) -> FactSet {
+    let mut outrs = RecordSet::new();
+    let mut vo = Vec::new();
+
+    for (r, f, w) in &RecordSet::from(e.clone(), f.clone()) {
+        if r == "path".to_string() {
+            println!("f {}", f);
+            if let Record::NamedStruct(n, v) = f {
+                for (_, v) in v {
+                    if let Record::Array(_, v) = v {
+                        for vi in v {
+                            vo.push(vi);
+                        }
+                    }
+                }
+            }
+        } else {
+            outrs.insert(r, f, w);
+        };
+    }
+    vo.push(e.myself().into_record());
+    outrs.insert(
+        "path".to_string(),
+        Record::Array(CollectionKind::Vector, vo),
+        1,
+    );
+    FactSet::Record(outrs)
+}
+
 impl Transport for ForwardingEntryHandler {
     fn send(&self, b: Batch) {
         // reconcile
