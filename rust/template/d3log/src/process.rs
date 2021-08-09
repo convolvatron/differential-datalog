@@ -86,20 +86,22 @@ impl Transport for ProcessInstance {
 
             let mut manager = self.manager.lock().expect("lock");
             let value = manager.entry(uuid).or_insert_with(|| (0, None));
+            // XXX: Consolidate weights manually?
             let w = value.0 + weight;
             let child_pid = value.1;
+            value.0 = w;
             if w > 0 {
                 // Start instance if one is not already present
                 if child_pid.is_none() {
-                    let pid = self.make_child(p).expect("fork failure");
-                    value.1 = Some(pid);
+                    if let pid = self.make_child(p).expect("fork failure") {
+                        value.1 = Some(pid);
+                    }
                 }
             } else if w <= 0 {
                 // what about other values of weight?
                 // kill if we can find the uuid..i guess and if the total weight is 1
                 if let Some(pid) = child_pid {
-                    // TODO: send SIGKILL to pid and wait for the child?
-                    // Update the value to None
+                    // send SIGKILL to pid and wait for the child?
                     println!("killing child with pid {}", pid);
                     kill(pid, SIGKILL).expect("kill failed");
                     // Update the value to None
