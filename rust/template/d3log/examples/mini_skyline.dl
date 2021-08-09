@@ -5,6 +5,7 @@ import display
 // but here we may be able to use the value of argv[0] to make it
 // slightly less broken
 Process(loc, "/Users/ehoffman/ddev/rust/template/d3log/examples/mini_skyline_ddlog/target/debug/mini_skyline_cli", true) :-
+             Clock(t),
              Fact(_, loc).
              
 input relation Fact(x:u64, k:u128)
