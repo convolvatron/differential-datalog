@@ -1,11 +1,11 @@
 {
     "Node":[
-	{"id":1,"executable":"/users/ehoffman/review/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli", "management":true},
-	{"id":2,"executable":"/users/ehoffman/review/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli", "management":true},
-        {"id":3,"executable":"/users/ehoffman/review/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli", "management":true}],
+	[{"id":1,"executable":"/opt/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli", "management":true}, 1],
+	[{"id":2,"executable":"/opt/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli", "management":true}, 1],
+	[{"id":3,"executable":"/opt/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli", "management":true}, 1]],
     
     "Dd":[
-	{"x":{"Serialized":["Bigint","0"]}},
-	{"x":{"Serialized":["Bigint","1"]}}
+	[{"x":0}, 1],
+	[{"x":0}, 2]
     ]
 }
