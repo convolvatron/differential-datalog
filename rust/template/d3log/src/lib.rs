@@ -17,7 +17,7 @@ use differential_datalog::{ddval::DDValue, record::*, D3logLocationId};
 use std::borrow::Cow;
 use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
-use tokio::sync::mpsc::{channel, Receiver, Sender};
+use tokio::sync::mpsc::{channel, Sender};
 
 use crate::{
     batch::Batch,
@@ -152,19 +152,18 @@ impl Instance {
         let (eval, init_batch) = new_evaluator(uuid, broadcast.clone())?;
         let dispatch = Arc::new(Dispatch::new(eval.clone()));
         let (esend, mut erecv) = channel(10);
-        let forwarder = Forwarder::new(eval.clone(), dispatch.clone(), broadcast.clone());
-
-        broadcast.clone().subscribe(Arc::new(AccumulatePort {
-            accumulator,
-            eval: eval.clone(),
-        }));
-
         let eval_port = Arc::new(EvalPort {
             rt: rt.clone(),
             dispatch: dispatch.clone(),
             eval: eval.clone(),
             s: esend,
         });
+        let (under, forwarder) = Forwarder::new(eval.clone(), dispatch.clone(), eval_port.clone());
+
+        broadcast.clone().subscribe(Arc::new(AccumulatePort {
+            accumulator,
+            eval: eval.clone(),
+        }));
 
         let instance = Arc::new(Instance {
             uuid,

@@ -39,6 +39,20 @@ impl Transport for ForwardingEntryHandler {
     }
 }
 
+struct Under {
+    forwarder: Arc<Forwarder>,
+    up: Port,
+}
+
+impl Transport for Under {
+    fn send(&self, b: Batch) {
+        //for (_r, f, _w) in &RecordSet::from(self.eval.clone(), b.meta) {
+        //if r == "destination" {}
+        //}
+        self.up.send(b);
+    }
+}
+
 #[derive(Clone)]
 struct Entry {
     port: Option<Port>,
@@ -52,7 +66,11 @@ pub struct Forwarder {
 }
 
 impl Forwarder {
-    pub fn new(eval: Evaluator, dispatch: Arc<Dispatch>, _management: Port) -> Arc<Forwarder> {
+    pub fn new(
+        eval: Evaluator,
+        dispatch: Arc<Dispatch>,
+        eval_port: Port,
+    ) -> (Port, Arc<Forwarder>) {
         let f = Arc::new(Forwarder {
             eval: eval.clone(),
             fib: Arc::new(Mutex::new(HashMap::new())),
@@ -67,7 +85,11 @@ impl Forwarder {
                 }),
             )
             .expect("register");
-        f
+        let inp = Arc::new(Under {
+            forwarder: f.clone(),
+            up: eval_port,
+        });
+        (inp, f.clone())
     }
 
     fn lookup(&self, n: Node) -> Arc<Mutex<Entry>> {

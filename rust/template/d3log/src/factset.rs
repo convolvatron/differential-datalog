@@ -3,7 +3,7 @@ use core::fmt;
 use core::fmt::Display;
 
 use serde::{de::SeqAccess, de::Visitor, Deserialize, Deserializer};
-use serde::{ser::SerializeMap, ser::SerializeTuple, Serialize, Serializer};
+use serde::{ser::SerializeMap, Serialize, Serializer};
 
 #[derive(Clone)]
 pub enum FactSet {

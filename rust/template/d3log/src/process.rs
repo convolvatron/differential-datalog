@@ -20,9 +20,8 @@ use {
         ffi::CString,
         sync::{Arc, Mutex},
     },
-    tokio::runtime::Runtime,
     tokio::sync::Mutex as AsyncMutex,
-    tokio::{io::AsyncReadExt, io::AsyncWriteExt, spawn},
+    tokio::{io::AsyncReadExt, io::AsyncWriteExt},
     tokio_fd::AsyncFd,
 };
 
