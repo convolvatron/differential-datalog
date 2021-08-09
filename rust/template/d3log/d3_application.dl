@@ -58,11 +58,11 @@ input relation Error(text: string,
 // reports the current running status of an instance, regardless of type
 // issues: this really shouldn't have exit code as its process instance specific
 //         there is no way to sample (force a new fact to be generated)
+//         there used to be an option for exit code 
 input relation InstanceStatus(time: Time,
       id: u128,
       memory_bytes:u64,
-      threads:u64,
-      exit_code:Option<u32>)
+      threads:u64)
 
 
 // Forward 

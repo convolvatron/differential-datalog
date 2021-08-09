@@ -6,13 +6,24 @@ import display
 // slightly less broken
 Process(loc, "/Users/ehoffman/ddev/rust/template/d3log/examples/mini_skyline_ddlog/target/debug/mini_skyline_cli", true) :-
              Clock(t),
+             var now = t.group_by(()).max(),
+             Schedule(loc, born, dies),
+             born <= now,
+             dies >= now,             
              Fact(_, loc).
+
+Schedule(1, 0, 100).
+Schedule(2, 0, 5).
+Schedule(3, 8, 100).
+Schedule(4, 0, 100).
+
              
 input relation Fact(x:u64, k:u128)
 output relation Anchor(x:u64)
 relation PrintMSResult(x:u64, me:D3logLocationId)
 relation MSResult(x:u64, me:D3logLocationId)
 relation LocalizedFact(x:u64)
+relation Schedule(node:u128, born:u64, dies:u64)
 relation Dist(n:Vec<D3logLocationId>)
 
 Dist(ws) :-

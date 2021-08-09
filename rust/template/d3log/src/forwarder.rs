@@ -17,6 +17,15 @@ struct ForwardingEntryHandler {
     forwarder: Arc<Forwarder>,
 }
 
+fn scan(e: Evaluator, f: FactSet, s: String) -> Option<Record> {
+    for (r, f, _w) in &RecordSet::from(e.clone(), f.clone()) {
+        if r == s {
+            return Some(f);
+        }
+    }
+    None
+}
+
 impl Transport for ForwardingEntryHandler {
     fn send(&self, b: Batch) {
         // reconcile
@@ -50,15 +59,13 @@ struct Under {
 impl Transport for Under {
     fn send(&self, b: Batch) {
         let f2 = self.forwarder.clone();
-        for (r, f, _w) in &RecordSet::from(self.eval.clone(), b.clone().meta) {
-            if r == "destination" {
-                if let Some(d) = f.get_struct_field("uuid") {
-                    let n = async_error!(self.eval, u128::from_record(d));
-                    if n == self.eval.clone().myself() {
-                        self.up.send(b);
-                    } else {
-                        async_error!(self.eval, f2.clone().out(n, b.clone()));
-                    }
+        scan(self.eval.clone(), b.clone().meta, "destination".to_string());
+
+        if let Some(f) = scan(self.eval.clone(), b.clone().meta, "destination".to_string()) {
+            if let Some(d) = f.get_struct_field("uuid") {
+                let n = async_error!(self.eval, u128::from_record(d));
+                if n != self.eval.clone().myself() {
+                    async_error!(self.eval, f2.clone().out(n, b.clone()));
                     return;
                 }
             }
@@ -153,16 +160,22 @@ impl Forwarder {
                 Err(_) => panic!("lock"),
             }
         };
-        // xxx better fact macros - dont need to set this in many cases
-        let m = RecordSet::singleton(
-            Record::NamedStruct(
-                Cow::from("destination"),
-                vec![((Cow::from("uuid"), nid.into_record()))],
-            ),
-            1,
-        );
-        // dont overwrite metadata - augment
-        p.send(Batch::new(FactSet::Record(m), b.data));
+
+        let b = if scan(self.eval.clone(), b.clone().meta, "destination".to_string()).is_none() {
+            let mut r = RecordSet::from(self.eval.clone(), b.clone().meta);
+            r.insert(
+                "destination".to_string(),
+                Record::NamedStruct(
+                    Cow::from("destination".to_string()),
+                    vec![(Cow::from("uuid".to_string()), nid.into_record())],
+                ),
+                1,
+            );
+            Batch::new(FactSet::Record(r), b.data)
+        } else {
+            b
+        };
+        p.send(b);
         Ok(())
     }
 }

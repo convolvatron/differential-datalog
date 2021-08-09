@@ -92,7 +92,7 @@ impl Display for RecordSet {
     }
 }
 
-fn value_to_record(v: Value) -> Result<Record, Error> {
+fn value_to_record(name: String, v: Value) -> Result<Record, Error> {
     match v {
         Null => panic!("we dont null here"),
         Value::Bool(b) => Ok(Record::Bool(b)),
@@ -103,30 +103,21 @@ fn value_to_record(v: Value) -> Result<Record, Error> {
         Value::Array(a) => {
             let mut values = Vec::new();
             for v in a {
-                values.push(value_to_record(v)?);
+                values.push(value_to_record(name.clone(), v)?);
             }
             Ok(Record::Array(CollectionKind::Vector, values))
         }
         Value::Object(m) => {
+            let mut outv = Vec::new();
             for (k, v) in m {
-                match k.as_str() {
-                    "Serialized" => {
-                        if let Value::Array(x) = &v {
-                            if let Value::String(x) = &x[1] {
-                                if let Some(x) = BigInt::parse_bytes(x.as_bytes(), 10) {
-                                    return Ok(Record::Int(x));
-                                }
-                            }
-                        }
-                        return Err(Error::new("unhandled serialized format".to_string()));
-                    }
-                    // there should be a way to extract Some and error otherwise
-                    "String" => return Ok(Record::String(v.as_str().unwrap().to_string())),
-                    _ => println!("non int value"),
-                };
+                outv.push((
+                    Cow::from(k.as_str().to_string()),
+                    value_to_record(name.clone(), v)?,
+                ));
             }
-            Err(Error::new("bad record json".to_string()))
+            Ok(Record::NamedStruct(Cow::from(name.clone()), outv))
         }
+        _ => Err(Error::new("bad record json".to_string())),
     }
 }
 
@@ -145,7 +136,13 @@ fn record_to_value(r: &Record) -> Result<Value, Error> {
 
         Record::String(s) => Ok(Value::String(s.to_string())),
         Record::Array(_i, _v) => panic!("foo"),
-        Record::NamedStruct(_collection_kind, _v) => panic!("bbar"),
+        Record::NamedStruct(_collection_kind, v) => {
+            let mut m = serde_json::Map::new();
+            for (k, v) in v {
+                m.insert(k.to_string(), record_to_value(v)?);
+            }
+            Ok(Value::Object(m))
+        }
         _ => Err(Error::new("unhanded record format".to_string())),
     }
 }
@@ -173,10 +170,9 @@ impl<'de> Visitor<'de> for RecordSetVisitor {
                 for (fact, w) in value.into_iter() {
                     let mut properties = Vec::new();
                     for (k, v) in fact {
-                        let r: Record = value_to_record(v).expect("cant be a panic");
+                        let r: Record = value_to_record(r.to_string(), v).expect("cant be a panic");
                         properties.push((Cow::from(k), r));
                     }
-
                     bn.records
                         .push((Record::NamedStruct(Cow::from(r.clone()), properties), w));
                 }
