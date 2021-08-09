@@ -41,7 +41,7 @@ output relation Process(id: u128, executable: string, management:bool)
 
 // Clock
 //  testing feature to assert a fact every second
-output relation Clock(seconds: usize)
+input relation Clock(seconds: usize)
 
 
 // Error

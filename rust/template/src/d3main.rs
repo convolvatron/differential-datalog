@@ -30,7 +30,7 @@ use rand::Rng;
 use std::borrow::Cow;
 use std::convert::TryFrom;
 use std::sync::Arc;
-use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use tokio::{runtime::Runtime, sync::Mutex as AsyncMutex, time::sleep};
 use tokio_fd::AsyncFd;
 
