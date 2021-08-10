@@ -41,10 +41,12 @@ impl Dred {
     pub fn close_with_metadata(&self) {
         for batch in self.demo_accumulator.lock().expect("lock").iter() {
             let mut value_set = ValueSet::new();
-            for (r, v, mut w) in &ValueSet::from(&*self.eval, batch.clone().data).expect("iterator") {
+            for (r, v, mut w) in &ValueSet::from(&*self.eval, batch.clone().data).expect("iterator")
+            {
                 w = -w;
                 value_set.insert(r, v, w);
             }
+
             let out_batch = Batch::new(batch.clone().meta, FactSet::Value(value_set));
             self.out_port.send(out_batch.clone());
         }

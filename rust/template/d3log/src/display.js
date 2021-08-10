@@ -29,13 +29,20 @@ var nodes = {}
 
 function push(obj, key, value){
     let kind = obj.getAttributeNS(null,"kind")
-    console.log(kind)
     if (kind == "circle") {
         if (key == "x") {
             key = "cx";
         }
         if (key == "y") {
             key = "cy";
+        }        
+    }
+    if (kind == "line") {
+        if (key == "x") {
+            key = "x1";
+        }
+        if (key == "y") {
+            key = "y1";
         }        
     }
     
@@ -62,7 +69,6 @@ function websocket(url) {
         socket = new WebSocket(url)
         
         socket.onopen = function(evt){
-            console.log("onopen");
             clear()
         }
         
@@ -72,11 +78,12 @@ function websocket(url) {
                 let value = msg[key]
                 for (const fact of value){
                     let f = fact[0];
+                    let w = fact[1];
+
                     if (!(f.u in nodes)) {
                         nodes[f.u] = {}
                     }
                     let obj = nodes[f.u];
-                    console.log(key, fact[0]);                
                     switch(key){
                     case "display::Kind":
                         let o = document.createElementNS(svgns, f.kind);
@@ -92,9 +99,16 @@ function websocket(url) {
                         set(obj, "x", f.x)
                         set(obj, "y", f.y)                        
                         break;
+                    case "display::NextPosition":
+                        set(obj, "x2", f.x)
+                        set(obj, "y2", f.y)                        
+                        break;                        
                     case "display::Color":
                         set(obj, "fill", f.color)                    
                         break;
+                    case "display::Width":
+                        set(obj, "stroke-width", f.width)                    
+                        break;                        
                     case "display::Text":
                         set(obj, "text", f.text)                                        
 	                break;

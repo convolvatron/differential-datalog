@@ -9,6 +9,7 @@ relation LocalizedFact(x:u64)
 relation Schedule(node:u128, born:u64, dies:u64)
 relation Dist(n:Vec<D3logLocationId>)
 relation Location(n:D3logLocationId, x:u32, y:u32)
+relation Line(id:u128, f:D3logLocationId, t:D3logLocationId)
 
 
 // rendering
@@ -17,6 +18,11 @@ Color(id, "lightgreen")@n :- Browser(n, _), Myself(id).
 Radius(id, 50)@n :- Browser(n, _), Myself(id).
 Kind(id, "circle")@n :- Browser(n, _), Myself(id).
 Text(id, text)@n :- Browser(n, _), Myself(id), var text = id.to_string().
+
+Position(id, x,y)@n :- Browser(n, _),      Line(id, a, _), Location(a, x, y).
+NextPosition(id, x,y)@n :-  Browser(n, _), Line(id, _, b), Location(b, x, y).
+Kind(id, "line")@n :- Browser(n, _), Line(id, _, b).
+Color(id, "black")@n :- Browser(n, _), Line(id, _, b).
 
 
 // the path here should actually be an executable, or I suppose a url to one.
@@ -39,6 +45,9 @@ Location(1, 100, 200).
 Location(2, 100, 100).
 Location(3, 300, 300).
 Location(4, 200, 400).
+
+// demo cheese
+Location(100, 500, 200).
 
 Dist(ws) :-
   Process(loc, _, _),

@@ -1,5 +1,8 @@
 relation Position(u:u128, x:u32, y:u32)
+// for lines - kinda cheesy huh?
+relation NextPosition(u:u128, x:u32, y:u32)
 relation Color(u:u128, color:string)
+relation Width(u:u128, width:u32)
 relation Kind(u:u128, kind:string)
 relation Text(u:u128, text:string)
 relation Radius(u:u128, r:u32)

@@ -143,7 +143,7 @@ pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
                         }
                     };
                     if bytes_input == 0 {
-                        dred.close();
+                        dred.close_with_metadata();
                         // Retract the connection status fact too!
                         // good! maybe we can just keep a copy of the original assertion?
                         clone2.broadcast.send(nega_fact!(

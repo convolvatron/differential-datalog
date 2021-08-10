@@ -165,6 +165,7 @@ pub fn start_d3log(
         let mut u = u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>());
         // use uuid crate.. truncate because of json issues
         u &= (1 << 63) - 1;
+        u = 100; // demo
         (u, true)
     };
 
