@@ -27,13 +27,12 @@ fn scan(e: Evaluator, f: FactSet, s: String) -> Option<Record> {
 }
 
 // this could have been relational i guess
-fn path(e: Evaluator, f: FactSet, s: String) -> FactSet {
+fn path(e: Evaluator, f: FactSet) -> FactSet {
     let mut outrs = RecordSet::new();
     let mut vo = Vec::new();
 
     for (r, f, w) in &RecordSet::from(e.clone(), f.clone()) {
         if r == "path".to_string() {
-            println!("f {}", f);
             if let Record::NamedStruct(n, v) = f {
                 for (_, v) in v {
                     if let Record::Array(_, v) = v {
@@ -50,7 +49,10 @@ fn path(e: Evaluator, f: FactSet, s: String) -> FactSet {
     vo.push(e.myself().into_record());
     outrs.insert(
         "path".to_string(),
-        Record::Array(CollectionKind::Vector, vo),
+        Record::NamedStruct(
+            Cow::from("path"),
+            vec![(Cow::from("path"), Record::Array(CollectionKind::Vector, vo))],
+        ),
         1,
     );
     FactSet::Record(outrs)
@@ -204,6 +206,8 @@ impl Forwarder {
         } else {
             b
         };
+
+        let b = Batch::new(path(self.eval.clone(), b.meta), b.data);
         p.send(b);
         Ok(())
     }

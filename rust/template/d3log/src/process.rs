@@ -93,16 +93,14 @@ impl Transport for ProcessInstance {
             if w > 0 {
                 // Start instance if one is not already present
                 if child_pid.is_none() {
-                    if let pid = self.make_child(p).expect("fork failure") {
-                        value.1 = Some(pid);
-                    }
+                    let pid = self.make_child(p).expect("fork failure");
+                    value.1 = Some(pid);
                 }
             } else if w <= 0 {
                 // what about other values of weight?
                 // kill if we can find the uuid..i guess and if the total weight is 1
                 if let Some(pid) = child_pid {
                     // send SIGKILL to pid and wait for the child?
-                    println!("killing child with pid {}", pid);
                     kill(pid, SIGKILL).expect("kill failed");
                     // Update the value to None
                     value.1 = None;

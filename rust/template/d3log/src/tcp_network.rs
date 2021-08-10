@@ -143,7 +143,6 @@ pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
                         }
                     };
                     if bytes_input == 0 {
-                        println!("Calling dred close ");
                         dred.close();
                         // Retract the connection status fact too!
                         // good! maybe we can just keep a copy of the original assertion?

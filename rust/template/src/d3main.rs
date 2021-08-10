@@ -9,7 +9,6 @@ use d3log::{
     factset::FactSet,
     function,
     json_framer::JsonFramer,
-    nega_fact,
     process::{read_output, FileDescriptorPort, MANAGEMENT_INPUT_FD, MANAGEMENT_OUTPUT_FD},
     record_set::{read_record_json_file, RecordSet},
     send_error,

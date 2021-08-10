@@ -30,7 +30,6 @@ pub struct Browser {
 
 impl Transport for Browser {
     fn send(&self, b: Batch) {
-        println!("display input");
         let a = self.clone();
         let rb = RecordSet::from(self.eval.clone(), b.data);
         // async error
@@ -55,7 +54,12 @@ async fn on_client(d: Display, stream_mut: AsyncClient) {
     d.instance.broadcast.clone().send(fact!(
         display::Browser,
         t => d.instance.eval.clone().now().into_record(),
-        uuid => b.uuid.into_record()));
+        loc => b.uuid.into_record()));
+
+    d.instance.broadcast.clone().send(fact!(
+        d3_application::Forward,
+        target=>b.uuid.into_record(),
+        intermediate => d.instance.uuid.into_record()));
 
     let (mut stx, srx) = stream_mut.split();
 

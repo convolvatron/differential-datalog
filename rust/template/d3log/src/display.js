@@ -8,76 +8,8 @@ var socket = false
 var connWait = 0
 var svgns = "http://www.w3.org/2000/svg"
 
-function boundingbox(obj) {
-    return obj.getBBox()
-}
-
-
-function softNode(parent, name, tree) {
-   // look up in dom..this is n^2...there is some kind of query something something
-   for (let elem of parent.children) {
-       if (elem.name == name) {
-           // we should be returning the old one, but to support overwrite
-           // we are deleting it..fix
-           elem.remove()
-      }
-   }
-    // see if we can defer the attach...or maybe it doesnt matter
-    obj = document.createElementNS(svgns, tree.kind);
-    obj.name = name
-
-   parent.appendChild(obj);
-   return obj
-}
-
-function set(obj, v) {
-    if (v == null) {
-        obj.remove()
-        return
-    }
-
-    for (var key in v) {
-        var val = v[key]
-	switch(key) {
-        case 'children':
-            for (var k in val) {
-                set(softNode(obj, k, val[k]), val[k])
-            }
-        case 'kind':
-            break
-	case 'click':
-            // if k is empty then remove listener
-            if (!("click" in obj)) {
-                   rebind_k = function(x) {
-                    // val?
-                       x.addEventListener("click",
-                                          function (evt) {putBatch(x.click)})
-                   }
-                rebind_k(obj)
-            } 
-            obj.click = val
-            break
-	case 'text':
-	    var textNode = document.createTextNode(val)
-	    obj.appendChild(textNode);
-	    break;
-	default: 
-	    obj.setAttributeNS(null,key,val)
-	}
-    }
-}
-
-// why isn't this a path walk? we should be able to set all the children, or
-// some detail of an existing child
-function path_set(dom, n, v) {
-    if ((n["0"] == "ui") && (n["1"] == "children")){
-        var name = n["1"]
-
-        obj = softNode(dom, name, v) // right? - v is being read to determine kind
-        set(obj, v)
-    }
-}
-
+//                       x.addEventListener("click",
+//                                          function (evt) {putBatch(x.click)})
 
 function clear() {
     if (svg != false) {
@@ -90,41 +22,80 @@ function clear() {
 }
 
 function send(item) {
-     socket.send(JSON.stringify(item))
+    socket.send(JSON.stringify(item))
 }
 
- 
-// this is the registration variant - maybe they are all* registration variants?
-function getUpstream(path) {
-     send({"read":path})
+var nodes = {}
+
+function push(obj, key, value){
+    if (key== "text") {
+        // delete old one on negation
+        var textNode = document.createTextNode(val)
+        obj.appendChild(textNode);
+    } else {
+        obj.obj.setAttributeNS(null,k,val)
+    }
 }
 
-function putBatch(statements) {
-    send(statements)
+function set(obj, k, val) {
+    obj[k] = val;
+    if (obj.has("obj")) {
+        push(obj["obj"], k, val);
+    }
 }
 
 function websocket(url) {  
     setTimeout(function() {
-	socket = new WebSocket(url)
-    socket.onopen = function(evt){
-        clear()
-        // send({"write":{"name":{"0":"generate"}, "value":{}}})
-        // getUpstream("")
-    }
-    socket.onmessage = function(event){
-        var msg = JSON.parse(event.data)
-        console.log(msg)
-        // routing?
-       //  path_set(svg, msg.write.name, msg.write.value)
-    }
-    socket.onclose = 
+        socket = new WebSocket(url)
+        
+        socket.onopen = function(evt){
+            console.log("onopen");
+            clear()
+        }
+        
+        socket.onmessage = function(event){
+            var msg = JSON.parse(event.data)
+            for (const [key, value] of Object.entries(msg)) {
+                for (const fact of value){
+                    let f = fact[0];
+                    if (!(f.u in nodes)) {
+                        nodes[f.u] = {}
+                    }
+                    let obj = nodes[f.u];
+                    console.log(key, fact[0]);                
+                    switch(key){
+                    case "display::Kind":
+                        let o = document.createElementNS(svgns, f.c);
+                        for (const [key, value] of obj){
+                            push(o, key, value);
+                        }
+                        parent.appendChild(o);
+                        obj.obj=o;
+                        break;
+                    case "display::Position":
+                        set(obj, "position", val)
+                        break;
+                    case "display::Color":
+                        set(obj, "color", val)                    
+                        break;
+                    case "display::Text":
+                        set(obj, "text", val)                                        
+	                break;
+                    case "display::Radius":
+                        set(obj, "r", val)                                        
+                    }
+                }
+            }
+        }
+        
+        socket.onclose = 
             function(evt){
-		svg.setAttributeNS(null, "fill", "grey") 
-		connWait = connWait * 2 + 1000
-		if (connWait > 5000) {
+	        svg.setAttributeNS(null, "fill", "grey") 
+	        connWait = connWait * 2 + 1000
+	        if (connWait > 5000) {
 		    connWait = 5000
-		}
-		websocket(url)
+	        }
+	        websocket(url)
 	    }
     }, connWait)
 }

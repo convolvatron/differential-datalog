@@ -134,7 +134,13 @@ fn record_to_value(r: &Record) -> Result<Value, Error> {
         }
 
         Record::String(s) => Ok(Value::String(s.to_string())),
-        Record::Array(_i, _v) => panic!("foo"),
+        Record::Array(_i, v) => {
+            let mut k = Vec::new();
+            for v in v {
+                k.push(record_to_value(v)?)
+            }
+            Ok(Value::Array(k))
+        }
         Record::NamedStruct(_collection_kind, v) => {
             let mut m = serde_json::Map::new();
             for (k, v) in v {

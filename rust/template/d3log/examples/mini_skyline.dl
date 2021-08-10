@@ -1,6 +1,24 @@
 import d3_application
 import display
 
+input relation Fact(x:u64, k:u128)
+output relation Anchor(x:u64)
+relation PrintMSResult(x:u64, me:D3logLocationId)
+relation MSResult(x:u64, me:D3logLocationId)
+relation LocalizedFact(x:u64)
+relation Schedule(node:u128, born:u64, dies:u64)
+relation Dist(n:Vec<D3logLocationId>)
+relation Location(n:D3logLocationId, x:u32, y:u32)
+
+
+// rendering
+Position(id, x, y)@n :- Browser(n, _), Myself(id), Location(id, x, y).
+Color(id, "blue")@n :- Browser(n, _), Myself(id).
+Radius(id, 50)@n :- Browser(n, _), Myself(id).
+Kind(id, "circle")@n :- Browser(n, _), Myself(id).
+Text(id, text)@n :- Browser(n, _), Myself(id), var text = id.to_string().
+
+
 // the path here should actually be an executable, or I suppose a url to one.
 // but here we may be able to use the value of argv[0] to make it
 // slightly less broken
@@ -17,14 +35,10 @@ Schedule(2, 0, 5).
 Schedule(3, 8, 100).
 Schedule(4, 0, 100).
 
-             
-input relation Fact(x:u64, k:u128)
-output relation Anchor(x:u64)
-relation PrintMSResult(x:u64, me:D3logLocationId)
-relation MSResult(x:u64, me:D3logLocationId)
-relation LocalizedFact(x:u64)
-relation Schedule(node:u128, born:u64, dies:u64)
-relation Dist(n:Vec<D3logLocationId>)
+Location(1, 100, 200).
+Location(2, 100, 100).
+Location(3, 300, 300).
+Location(4, 200, 400).
 
 Dist(ws) :-
   Process(loc, _, _),
