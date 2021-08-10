@@ -6,6 +6,7 @@ relation Width(u:u128, width:u32)
 relation Kind(u:u128, kind:string)
 relation Text(u:u128, text:string)
 relation Radius(u:u128, r:u32)
+relation Border(u:u128, color:string)
 
 input relation Browser(loc:D3logLocationId, t:u64)
 

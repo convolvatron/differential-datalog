@@ -28,6 +28,7 @@ function send(item) {
 var nodes = {}
 
 function push(obj, key, value){
+    // backpointer to intermeidate object?
     let kind = obj.getAttributeNS(null,"kind")
     if (kind == "circle") {
         if (key == "x") {
@@ -48,9 +49,15 @@ function push(obj, key, value){
     
     switch (key){
     case "text":
-        // delete old one on negation
+        tobj = document.createElementNS(svgns, "text");
         var textNode = document.createTextNode(value)
-        obj.appendChild(textNode);
+        // demo slime - get from intermed
+        tobj.setAttributeNS(null,"x",obj.getAttributeNS(null,"cx"))
+        tobj.setAttributeNS(null,"y",obj.getAttributeNS(null,"cy"))
+        // delete old one on negation        
+        obj.text = tobj;
+        tobj.appendChild(textNode);
+        svg.appendChild(tobj);
         break;
     default:
         obj.setAttributeNS(null,key,value)
@@ -84,6 +91,7 @@ function websocket(url) {
                         nodes[f.u] = {}
                     }
                     let obj = nodes[f.u];
+                    console.log(key, f)
                     switch(key){
                     case "display::Kind":
                         if (w > 0) { 
@@ -96,6 +104,9 @@ function websocket(url) {
                             svg.appendChild(o);
                             obj.obj=o;
                         } else {
+                            if (obj.obj.text) {
+                                svg.removeChild(obj.obj.text);
+                            }
                             svg.removeChild(obj.obj);
                         }
                         break;
@@ -110,6 +121,9 @@ function websocket(url) {
                     case "display::Color":
                         set(obj, "fill", f.color)                    
                         break;
+                    case "display::Border":
+                        set(obj, "stroke", f.color)                    
+                        break;                        
                     case "display::Width":
                         set(obj, "stroke-width", f.width)                    
                         break;                        

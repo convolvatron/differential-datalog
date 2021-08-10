@@ -15,9 +15,11 @@ relation Line(id:u128, f:D3logLocationId, t:D3logLocationId)
 // rendering
 Position(id, x, y)@n :- Browser(n, _), Myself(id), Location(id, x, y).
 Color(id, "lightgreen")@n :- Browser(n, _), Myself(id).
-Radius(id, 50)@n :- Browser(n, _), Myself(id).
-Kind(id, "circle")@n :- Browser(n, _), Myself(id).
-Text(id, text)@n :- Browser(n, _), Myself(id), var text = id.to_string().
+Radius(id, 50)@n :-      Browser(n, _), Myself(id).
+Kind(id, "circle")@n :-  Browser(n, _), Myself(id).
+Border(id, "black")@n :- Browser(n, _), Myself(id).
+Width(id, 3)@n :-        Browser(n, _), Myself(id).
+Text(id, text)@n :-      Browser(n, _), Myself(id), var text = id.to_string().
 
 Position(id, x,y)@n :- Browser(n, _),      Line(id, a, _), Location(a, x, y).
 NextPosition(id, x,y)@n :-  Browser(n, _), Line(id, _, b), Location(b, x, y).
