@@ -1,8 +1,8 @@
 relation Position(u:u128, x:u32, y:u32)
-relation Color(u:u128, c:string)
-relation Kind(u:u128, c:string)
-relation Text(u:u128, c:string)
-relation Radius(u:u128, c:u32)
+relation Color(u:u128, color:string)
+relation Kind(u:u128, kind:string)
+relation Text(u:u128, text:string)
+relation Radius(u:u128, r:u32)
 
 input relation Browser(loc:D3logLocationId, t:u64)
 

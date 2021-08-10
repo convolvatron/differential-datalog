@@ -13,7 +13,7 @@ relation Location(n:D3logLocationId, x:u32, y:u32)
 
 // rendering
 Position(id, x, y)@n :- Browser(n, _), Myself(id), Location(id, x, y).
-Color(id, "blue")@n :- Browser(n, _), Myself(id).
+Color(id, "lightgreen")@n :- Browser(n, _), Myself(id).
 Radius(id, 50)@n :- Browser(n, _), Myself(id).
 Kind(id, "circle")@n :- Browser(n, _), Myself(id).
 Text(id, text)@n :- Browser(n, _), Myself(id), var text = id.to_string().

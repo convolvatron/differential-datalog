@@ -28,18 +28,31 @@ function send(item) {
 var nodes = {}
 
 function push(obj, key, value){
-    if (key== "text") {
+    let kind = obj.getAttributeNS(null,"kind")
+    console.log(kind)
+    if (kind == "circle") {
+        if (key == "x") {
+            key = "cx";
+        }
+        if (key == "y") {
+            key = "cy";
+        }        
+    }
+    
+    switch (key){
+    case "text":
         // delete old one on negation
-        var textNode = document.createTextNode(val)
+        var textNode = document.createTextNode(value)
         obj.appendChild(textNode);
-    } else {
-        obj.obj.setAttributeNS(null,k,val)
+        break;
+    default:
+        obj.setAttributeNS(null,key,value)
     }
 }
 
 function set(obj, k, val) {
     obj[k] = val;
-    if (obj.has("obj")) {
+    if ("obj" in obj) {
         push(obj["obj"], k, val);
     }
 }
@@ -55,7 +68,8 @@ function websocket(url) {
         
         socket.onmessage = function(event){
             var msg = JSON.parse(event.data)
-            for (const [key, value] of Object.entries(msg)) {
+            for (var key in msg) {
+                let value = msg[key]
                 for (const fact of value){
                     let f = fact[0];
                     if (!(f.u in nodes)) {
@@ -65,24 +79,27 @@ function websocket(url) {
                     console.log(key, fact[0]);                
                     switch(key){
                     case "display::Kind":
-                        let o = document.createElementNS(svgns, f.c);
-                        for (const [key, value] of obj){
-                            push(o, key, value);
+                        let o = document.createElementNS(svgns, f.kind);
+                        set(obj, "kind", f.kind)
+                        o.setAttributeNS(null, "kind", f.kind);
+                        for (var key in obj){
+                            push(o, key, obj[key]);
                         }
-                        parent.appendChild(o);
+                        svg.appendChild(o);
                         obj.obj=o;
                         break;
                     case "display::Position":
-                        set(obj, "position", val)
+                        set(obj, "x", f.x)
+                        set(obj, "y", f.y)                        
                         break;
                     case "display::Color":
-                        set(obj, "color", val)                    
+                        set(obj, "fill", f.color)                    
                         break;
                     case "display::Text":
-                        set(obj, "text", val)                                        
+                        set(obj, "text", f.text)                                        
 	                break;
                     case "display::Radius":
-                        set(obj, "r", val)                                        
+                        set(obj, "r",f.r)                                        
                     }
                 }
             }
