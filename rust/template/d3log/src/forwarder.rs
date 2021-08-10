@@ -90,8 +90,11 @@ struct Under {
 
 impl Transport for Under {
     fn send(&self, b: Batch) {
+        if let Some(x) = scan(self.eval.clone(), b.clone().meta, "path".to_string()) {
+            println!("path {} {}", x, self.eval.myself());
+        }
+
         let f2 = self.forwarder.clone();
-        scan(self.eval.clone(), b.clone().meta, "destination".to_string());
 
         if let Some(f) = scan(self.eval.clone(), b.clone().meta, "destination".to_string()) {
             if let Some(d) = f.get_struct_field("uuid") {

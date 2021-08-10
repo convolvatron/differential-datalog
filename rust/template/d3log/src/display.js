@@ -27,47 +27,72 @@ function send(item) {
 
 var nodes = {}
 
-function push(obj, key, value){
-    // backpointer to intermeidate object?
-    let kind = obj.getAttributeNS(null,"kind")
-    if (kind == "circle") {
-        if (key == "x") {
-            key = "cx";
-        }
-        if (key == "y") {
-            key = "cy";
-        }        
-    }
-    if (kind == "line") {
-        if (key == "x") {
-            key = "x1";
-        }
-        if (key == "y") {
-            key = "y1";
-        }        
-    }
-    
-    switch (key){
-    case "text":
+function push_text(obj, key, value) {
+    if ((key == "text") && (obj.svg)){
         tobj = document.createElementNS(svgns, "text");
         var textNode = document.createTextNode(value)
-        // demo slime - get from intermed
-        tobj.setAttributeNS(null,"x",obj.getAttributeNS(null,"cx"))
-        tobj.setAttributeNS(null,"y",obj.getAttributeNS(null,"cy"))
-        // delete old one on negation        
-        obj.text = tobj;
+        tobj.setAttributeNS(null,"x",obj.x);
+        tobj.setAttributeNS(null,"y",obj.y);
+        tobj.setAttributeNS(null,"text-anchor","middle");
+        tobj.setAttributeNS(null,"font-size","24");
+        obj.textobj = tobj;
         tobj.appendChild(textNode);
         svg.appendChild(tobj);
-        break;
-    default:
-        obj.setAttributeNS(null,key,value)
+    }
+}
+
+
+// this takes svg, not inter
+function push(obj, key, value){
+    if (obj.svg) {
+        kind = obj.kind;
+        if (kind == "circle") {
+            if (key == "x") {
+                key = "cx";
+            }
+            if (key == "y") {
+                key = "cy";
+            }        
+        }
+        if (kind == "line") {
+            if (key == "x") {
+                key = "x1";
+            }
+            if (key == "y") {
+                key = "y1";
+            }        
+        }
+        
+        switch (key){
+        case "text":
+            break;
+        default:
+            obj.svg.setAttributeNS(null,key,value)
+        }
     }
 }
 
 function set(obj, k, val) {
     obj[k] = val;
     if ("obj" in obj) {
-        push(obj["obj"], k, val);
+        push(obj, k, val);
+        push_text(obj, k, val);        
+    }
+}
+
+function create(obj) {
+    if ((!obj.svg) && (obj.kind)) {
+        let o = document.createElementNS(svgns, obj.kind);
+        o.setAttributeNS(null, "obj", obj);
+        obj.svg=o;        
+        for (var key in obj){
+            push(obj, key, obj[key]);
+        }
+        
+        svg.appendChild(o);
+        for (var key in obj){
+            push_text(obj, key, obj[key]);
+        }                                        
     }
 }
 
@@ -87,27 +112,24 @@ function websocket(url) {
                     let f = fact[0];
                     let w = fact[1];
 
-                   if (!(f.u in nodes)) {
+                    if (!(f.u in nodes)) {
+                        console.log("insert", f.u)
                         nodes[f.u] = {}
                     }
                     let obj = nodes[f.u];
-                    console.log(key, f)
+
+                    console.log("prop", f.u, key)
                     switch(key){
                     case "display::Kind":
-                        if (w > 0) { 
-                            let o = document.createElementNS(svgns, f.kind);
-                            set(obj, "kind", f.kind)
-                            o.setAttributeNS(null, "kind", f.kind);
-                            for (var key in obj){
-                                push(o, key, obj[key]);
-                            }
-                            svg.appendChild(o);
-                            obj.obj=o;
+                        if (w > 0) {
+                            set(obj, "kind", f.kind)                            
                         } else {
-                            if (obj.obj.text) {
-                                svg.removeChild(obj.obj.text);
+                            if (obj.textobj) {
+                                svg.removeChild(obj.textobj);
                             }
-                            svg.removeChild(obj.obj);
+                            if (obj.svg) {
+                                svg.removeChild(obj.svg);
+                            }
                         }
                         break;
                     case "display::Position":
@@ -134,6 +156,12 @@ function websocket(url) {
                         set(obj, "r",f.r)                                        
                     }
                 }
+            }
+            for (var k in nodes){
+                console.log("digested", k)
+            }
+            for (var k in nodes){
+                create(nodes[k]);
             }
         }
         
