@@ -80,20 +80,24 @@ function websocket(url) {
                     let f = fact[0];
                     let w = fact[1];
 
-                    if (!(f.u in nodes)) {
+                   if (!(f.u in nodes)) {
                         nodes[f.u] = {}
                     }
                     let obj = nodes[f.u];
                     switch(key){
                     case "display::Kind":
-                        let o = document.createElementNS(svgns, f.kind);
-                        set(obj, "kind", f.kind)
-                        o.setAttributeNS(null, "kind", f.kind);
-                        for (var key in obj){
-                            push(o, key, obj[key]);
+                        if (w > 0) { 
+                            let o = document.createElementNS(svgns, f.kind);
+                            set(obj, "kind", f.kind)
+                            o.setAttributeNS(null, "kind", f.kind);
+                            for (var key in obj){
+                                push(o, key, obj[key]);
+                            }
+                            svg.appendChild(o);
+                            obj.obj=o;
+                        } else {
+                            svg.removeChild(obj.obj);
                         }
-                        svg.appendChild(o);
-                        obj.obj=o;
                         break;
                     case "display::Position":
                         set(obj, "x", f.x)
