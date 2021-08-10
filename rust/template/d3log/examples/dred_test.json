@@ -1,8 +1,8 @@
 {
     "Node":[
-	[{"id":1,"executable":"/opt/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli", "management":true}, 1],
-	[{"id":2,"executable":"/opt/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli", "management":true}, 1],
-	[{"id":3,"executable":"/opt/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli", "management":true}, 1]],
+	[{"id":1,"path":"/opt/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli", "management":true}, 1],
+	[{"id":2,"path":"/opt/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli", "management":true}, 1],
+	[{"id":3,"path":"/opt/differential-datalog/rust/template/d3log/examples/dred_test_ddlog/target/debug/dred_test_cli", "management":true}, 1]],
     
     "Dd":[
 	[{"x":0}, 1],

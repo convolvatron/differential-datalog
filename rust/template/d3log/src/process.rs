@@ -249,7 +249,7 @@ impl ProcessInstance {
                 dup2(standard_out_w, 1)?;
                 dup2(standard_err_w, 2)?;
 
-                if let Some(exec) = process.get_struct_field("executable") {
+                if let Some(exec) = process.get_struct_field("path") {
                     // FIXME: Temporary fix. this should be fixed ddlog-wide
                     let exec = exec.to_string().replace("\"", "");
                     if let Some(id) = process.get_struct_field("id") {
