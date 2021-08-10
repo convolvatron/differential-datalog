@@ -10,7 +10,7 @@ relation Schedule(node:u128, born:u64, dies:u64)
 relation Dist(n:Vec<D3logLocationId>)
 relation Location(n:D3logLocationId, x:u32, y:u32)
 relation Line(id:u128, f:D3logLocationId, t:D3logLocationId)
-
+relation AccMSResult(x:u64)
 
 // rendering
 Position(id, x, y)@n :- Browser(n, _), Myself(id), Location(id, x, y).
@@ -39,17 +39,19 @@ Process(loc, "/Users/ehoffman/ddev/rust/template/d3log/examples/mini_skyline_ddl
              Fact(_, loc).
 
 Schedule(1, 0, 100).
-Schedule(2, 0, 5).
-Schedule(3, 8, 100).
+Schedule(2, 0, 15).
+Schedule(3, 30, 100).
 Schedule(4, 0, 100).
+Schedule(6, 0, 100).
 
-Location(1, 100, 200).
-Location(2, 100, 100).
+Location(1, 300, 100).
+Location(2, 300, 200).
 Location(3, 300, 300).
-Location(4, 200, 400).
+Location(4, 300, 400).
 
 // demo cheese
-Location(100, 500, 200).
+Location(100, 100, 250).
+Location(6, 500, 250).
 
 Dist(ws) :-
   Process(loc, _, _),
@@ -63,11 +65,18 @@ LocalizedFact(x)@n:-
 MSResult(x, y) :- LocalizedFact(x),
                   Myself(y).
 
-PrintMSResult(x, y)@n :-
-                   Stdout(n),
+PrintMSResult(x, y)@6 :-
                    MSResult(x, y).
 
-Anchor(x) :- PrintMSResult(x, _).
+// if I rotate stdout to the top, there is a scoping issue?
+AccMSResult(x)@n :-
+      PrintMSResult(v, y),
+      var x = v.group_by(()).group_sum(),
+      Stdout(n).
+
+                 
+
+Anchor(x) :- AccMSResult(x).
 
 
 
