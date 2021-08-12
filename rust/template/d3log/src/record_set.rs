@@ -116,7 +116,6 @@ fn value_to_record(name: String, v: Value) -> Result<Record, Error> {
             }
             Ok(Record::NamedStruct(Cow::from(name.clone()), outv))
         }
-        _ => Err(Error::new("bad record json".to_string())),
     }
 }
 
@@ -266,6 +265,15 @@ impl RecordSet {
             FactSet::Record(x) => x,
             FactSet::Empty() => RecordSet::new(),
         }
+    }
+
+    pub fn scan(self, s: String) -> Option<Record> {
+        for (r, f, _w) in &self {
+            if r == s {
+                return Some(f);
+            }
+        }
+        None
     }
 }
 

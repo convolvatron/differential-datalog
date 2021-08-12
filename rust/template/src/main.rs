@@ -253,10 +253,11 @@ fn main() -> Result<(), String> {
     let parser = opts! {
         synopsis "DDlog CLI interface.";
         auto_shorts false;
-        opt store:bool=true, desc:"Do not store output relation state. 'dump' and 'dump <table>' commands will produce no output."; // --no-store
+        opt store:bool=true, desc:"Do not store output relation state. 'dump' and 'dump <table>' commands will produce no output."; // --no-opt
         opt input:Option<String>, short:'i', desc:"Feed the .json file specified in the argument into the Evaluator.";              // --input
         opt debug_management:bool=false, short:'m', desc:"print the facts on the management bus.";                                  // --debug_management
         opt clock:bool=false, short:'c', desc:"management second clock.";                                                           // --clock
+        opt recording:Option<String>, short:'r', desc:"record command trace to file.";                                         // --recording
         opt delta:bool=true, desc:"Do not record changes. 'commit dump_changes' will produce no output.";                           // --no-delta
         opt init_snapshot:bool=true, desc:"Do not dump initial output snapshot.";                                                   // --no-init-snapshot
         opt print:bool=true, desc:"Backwards compatibility. The value of this flag is ignored.";                                    // --no-print
@@ -422,7 +423,13 @@ fn main() -> Result<(), String> {
     // make sense to run a d3log program w/o the runtime
     // xxx - pass config through - a map or somesuch? - we really just want argv :)
     #[cfg(feature = "distribution")]
-    d3main::start_d3log(args.debug_management, args.clock, args.input).expect("d3log");
+    d3main::start_d3log(
+        args.debug_management,
+        args.recording,
+        args.clock,
+        args.input,
+    )
+    .expect("d3log");
 
     let ddlog_res = match crate::run_with_config(config, args.store) {
         Ok((hddlog, init_output)) => {

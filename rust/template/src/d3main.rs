@@ -27,10 +27,13 @@ use differential_datalog::{
     D3log, DDlog, DDlogDynamic,
 };
 use rand::Rng;
-use std::borrow::Cow;
-use std::convert::TryFrom;
-use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::{
+    borrow::Cow,
+    convert::TryFrom,
+    fs::File,
+    sync::Arc,
+    time::{Duration, SystemTime, UNIX_EPOCH},
+};
 use tokio::{runtime::Runtime, sync::Mutex as AsyncMutex, time::sleep};
 use tokio_fd::AsyncFd;
 
@@ -55,11 +58,20 @@ pub struct D3 {
 }
 
 impl D3 {
-    pub fn new(uuid: u128, error: Port) -> Result<(Evaluator, Batch), Error> {
+    pub fn new(
+        uuid: u128,
+        error: Port,
+        recording: &Option<String>,
+    ) -> Result<(Evaluator, Batch), Error> {
         let config = Config::new()
             .with_timely_workers(1)
             .with_profiling_config(ProfilingConfig::SelfProfiling);
-        let (h, init_output) = crate::run_with_config(config, false)?;
+        let (mut h, init_output) = crate::run_with_config(config, false)?;
+        if let Some(f) = recording {
+            let file = File::create(f)?;
+            h.record_commands(&mut Some(file));
+        }
+
         let ad = Arc::new(D3 { h, uuid, error });
         Ok((ad, ValueSet::from_delta_map(init_output)))
     }
@@ -149,8 +161,10 @@ impl EvaluatorTrait for D3 {
     }
 }
 
+// please factify this configuration
 pub fn start_d3log(
     debug_broadcast: bool,
+    recording: Option<String>,
     clock: bool,
     inputfile: Option<String>,
 ) -> Result<(), Error> {
@@ -169,8 +183,10 @@ pub fn start_d3log(
         (u, true)
     };
 
-    let d =
-        move |id: u128, error: Port| -> Result<(Evaluator, Batch), Error> { D3::new(id, error) };
+    // move d3log configuration into facts
+    let d = move |id: u128, error: Port| -> Result<(Evaluator, Batch), Error> {
+        D3::new(id, error, &recording)
+    };
 
     let rt = Arc::new(Runtime::new()?);
     let instance = Instance::new(rt.clone(), Arc::new(d), uuid)?;

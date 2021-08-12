@@ -17,15 +17,6 @@ struct ForwardingEntryHandler {
     forwarder: Arc<Forwarder>,
 }
 
-fn scan(e: Evaluator, f: FactSet, s: String) -> Option<Record> {
-    for (r, f, _w) in &RecordSet::from(e.clone(), f.clone()) {
-        if r == s {
-            return Some(f);
-        }
-    }
-    None
-}
-
 // this could have been relational i guess
 fn path(e: Evaluator, f: FactSet) -> FactSet {
     let mut outrs = RecordSet::new();
@@ -33,7 +24,7 @@ fn path(e: Evaluator, f: FactSet) -> FactSet {
 
     for (r, f, w) in &RecordSet::from(e.clone(), f.clone()) {
         if r == "path".to_string() {
-            if let Record::NamedStruct(n, v) = f {
+            if let Record::NamedStruct(_n, v) = f {
                 for (_, v) in v {
                     if let Record::Array(_, v) = v {
                         for vi in v {
@@ -90,13 +81,13 @@ struct Under {
 
 impl Transport for Under {
     fn send(&self, b: Batch) {
-        if let Some(x) = scan(self.eval.clone(), b.clone().meta, "path".to_string()) {
-            println!("path {} {}", x, self.eval.myself());
-        }
-
         let f2 = self.forwarder.clone();
 
-        if let Some(f) = scan(self.eval.clone(), b.clone().meta, "destination".to_string()) {
+        for (_r, f, w) in &RecordSet::from(self.eval.clone(), b.data.clone()) {
+            println!("Node Input: {} {} {}", self.eval.myself(), f, w);
+        }
+        let rs = &RecordSet::from(self.eval.clone(), b.clone().meta);
+        if let Some(f) = rs.clone().scan("destination".to_string()) {
             if let Some(d) = f.get_struct_field("uuid") {
                 let n = async_error!(self.eval, u128::from_record(d));
                 if n != self.eval.clone().myself() {
@@ -195,7 +186,8 @@ impl Forwarder {
             }
         };
 
-        let b = if scan(self.eval.clone(), b.clone().meta, "destination".to_string()).is_none() {
+        let rs = &RecordSet::from(self.eval.clone(), b.clone().meta);
+        let b = if rs.clone().scan("destination".to_string()).is_none() {
             let mut r = RecordSet::from(self.eval.clone(), b.clone().meta);
             r.insert(
                 "destination".to_string(),
@@ -210,7 +202,8 @@ impl Forwarder {
             b
         };
 
-        let b = Batch::new(path(self.eval.clone(), b.meta), b.data);
+        let pu = path(self.eval.clone(), b.meta);
+        let b = Batch::new(pu, b.data);
         p.send(b);
         Ok(())
     }
@@ -233,7 +226,10 @@ impl Transport for Forwarder {
             }
         }
         for (nid, nb) in output.drain() {
-            self.out(nid, Batch::new(b.meta.clone(), FactSet::Value(*nb)));
+            async_error!(
+                self.eval.clone(),
+                self.out(nid, Batch::new(b.meta.clone(), FactSet::Value(*nb)))
+            );
         }
     }
 }

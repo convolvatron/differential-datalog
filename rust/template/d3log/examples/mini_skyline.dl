@@ -30,8 +30,6 @@ Width(id, 5)@n :-           Browser(n, _), Line(id, _, _).
 Border(id, "black")@n :-     Browser(n, _), Line(id, _, _).
 
 
-Line(10, 100, 3).
-
 // the path here should actually be an executable, or I suppose a url to one.
 // but here we may be able to use the value of argv[0] to make it
 // slightly less broken
@@ -44,10 +42,7 @@ Process(loc, "/Users/ehoffman/ddev/rust/template/d3log/examples/mini_skyline_ddl
              Fact(_, loc).
 
 Schedule(1, 0,  100).
-Schedule(2, 0,  15).
-Schedule(3, 25, 250).
-Schedule(4, 0,  30).
-Schedule(5, 20, 250).
+Schedule(2, 10,  30).
 Schedule(6, 0,  400).
 
 Location(1, 300, 100).
@@ -62,7 +57,7 @@ Location(6, 500, 250).
 
 
 Dist(ws) :-
-  Process(loc, _, _),
+  InstanceStatus(_, loc, _, _),
   loc < 6,
   var ws:Vec<D3logLocationId> = loc.group_by(()).to_vec().
 
@@ -77,14 +72,12 @@ MSResult(x, y) :- LocalizedFact(x),
 PrintMSResult(x, y)@6 :-
                    MSResult(x, y).
 
-// if I rotate stdout to the top, i lose the binding for n - there is a scoping issue?
-AccMSResult(v)@n :-
+// group by clears out the preceeding references
+AccMSResult(x)@n :-
       PrintMSResult(v, _),
-//      var x = v, // v.group_by(()).group_sum(),
-      Stdout(n).
-
-                 
-
+      var x = v.group_by(()).group_sum(),
+      Stdout(n).      
+      
 Anchor(x) :- AccMSResult(x).
 
 

@@ -97,6 +97,7 @@ impl Transport for ProcessInstance {
                     value.1 = Some(pid);
                 }
             } else if w <= 0 {
+                // xxxx retract InstanceStatus!!
                 // what about other values of weight?
                 // kill if we can find the uuid..i guess and if the total weight is 1
                 if let Some(pid) = child_pid {
@@ -117,7 +118,7 @@ struct Child {
 }
 
 impl Child {
-    pub fn new(uuid: u128, pid: Pid, instance: Arc<Instance>) -> Self {
+    pub fn new(uuid: u128, _pid: Pid, instance: Arc<Instance>) -> Self {
         Self {
             eval: instance.eval.clone(),
             uuid,

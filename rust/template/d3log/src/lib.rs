@@ -91,28 +91,6 @@ struct EvalPort {
 
 impl Transport for EvalPort {
     fn send(&self, b: Batch) {
-        /*
-                for (_r, v, _w) in &RecordSet::from(self.eval.clone(), b.data.clone()) {
-                    if let Some(text) = v.get_struct_field("text") {
-                        println!(
-                            "Error @ node {} -> {} @ {}:{}:{}",
-                            v.get_struct_field("uuid")
-                                .or(Some(&0xbad_ffff_u128.into_record()))
-                                .unwrap(),
-                            text,
-                            v.get_struct_field("filename")
-                                .or(Some(&"unknown.rs".into_record()))
-                                .unwrap(),
-                            v.get_struct_field("functionname")
-                                .or(Some(&"unknown_fn".into_record()))
-                                .unwrap(),
-                            v.get_struct_field("line")
-                                .or(Some(&0u64.into_record()))
-                                .unwrap(),
-                        );
-                    }
-                }
-        */
         self.dispatch.send(b.clone());
         let eclone = self.eval.clone();
         let sclone = self.s.clone();
@@ -122,16 +100,18 @@ impl Transport for EvalPort {
     }
 }
 
-struct Trace {
+pub struct Trace {
     uuid: Node,
     head: String,
     p: Port,
 }
 
 impl Trace {
+    #[allow(dead_code)]
     fn new(uuid: Node, head: String, p: Port) -> Port {
         Arc::new(Trace {
             uuid,
+
             head,
             p: p.clone(),
         })
@@ -153,7 +133,7 @@ impl Transport for DebugPort {
     fn send(&self, b: Batch) {
         // print meta
         for (_r, f, w) in &RecordSet::from(self.eval.clone(), b.data) {
-            println!("{} {}", f, w);
+            println!("Stdout: {} {}", f, w);
         }
     }
 }
@@ -212,9 +192,14 @@ impl Instance {
             loop {
                 // this will spin on close
                 if let Some(x) = erecv.recv().await {
+                    println!("eval in {}", x.clone().format(instance_clone.eval.clone()));
                     let out = async_error!(
                         instance_clone.eval.clone(),
                         instance_clone.eval.eval(x.clone())
+                    );
+                    println!(
+                        "eval out {}",
+                        out.clone().format(instance_clone.eval.clone())
                     );
                     instance_clone.dispatch.send(out.clone());
                     instance_clone.forwarder.send(out.clone());

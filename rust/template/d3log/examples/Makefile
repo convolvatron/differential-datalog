@@ -6,30 +6,20 @@ DDLOG=${HOME}/.local/bin/ddlog
 
 all: run
 
-dred: run_dred
-
 compiler:
 	(cd $(ROOT) ;  stack build && stack install)
 
+PROGRAM=retract
+
 program: 
-	$(DDLOG) --no-staticlib --dynlib --action compile -L$(ROOT)/lib -L.. --d3log -i mini_skyline.dl
+	$(DDLOG) --no-staticlib --dynlib --action compile -L$(ROOT)/lib -L.. --d3log -i $(PROGRAM).dl
 
-compile: 
-	(cd mini_skyline_ddlog ; cargo build --features distribution)
+compile: program
+	(cd $(PROGRAM)_ddlog ; cargo build --features distribution)
 
-start: 
-	./mini_skyline_ddlog/target/debug/mini_skyline_cli -c -m -i mini_skyline.json 
+start: compile
+	./$(PROGRAM)_ddlog/target/debug/$(PROGRAM)_cli -c -r n4traceout -m -i $(PROGRAM).json 
 
-program_dred: 
-	$(DDLOG) --no-staticlib --dynlib --action compile -L$(ROOT)/lib -L.. --d3log -i dred_test.dl
-
-compile_dred: 
-	(cd dred_test_ddlog ; cargo build --features distribution)
-
-start_dred:
-	./dred_test_ddlog/target/debug/dred_test_cli -i dred_test.json 
-
-run_dred: program_dred compile_dred start_dred
 
 inc: compile start
 run: program compile start	
