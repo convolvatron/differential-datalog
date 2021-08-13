@@ -151,6 +151,16 @@ impl Transport for AccumulatePort {
     }
 }
 
+fn trace(instance: Arc<Instance>, key: &str, prefix: &str, b: Batch) {
+    if let Some(_) = b.clone().meta.scan(key.to_string()) {
+        println!(
+            "{} {}",
+            prefix.to_string(),
+            b.clone().format(instance.eval.clone())
+        );
+    }
+}
+
 impl Instance {
     pub fn new(
         rt: Arc<Runtime>,
@@ -161,7 +171,7 @@ impl Instance {
         let broadcast = Broadcast::new(uuid, accumulator.clone());
         let (eval, init_batch) = new_evaluator(uuid, broadcast.clone())?;
         let dispatch = Arc::new(Dispatch::new(eval.clone()));
-        let (esend, mut erecv) = channel(10);
+        let (esend, mut erecv) = channel(20);
         let eval_port = Arc::new(EvalPort {
             rt: rt.clone(),
             dispatch: dispatch.clone(),
@@ -191,18 +201,45 @@ impl Instance {
         rt.spawn(async move {
             loop {
                 // this will spin on close
-                if let Some(x) = erecv.recv().await {
-                    println!("eval in {}", x.clone().format(instance_clone.eval.clone()));
-                    let out = async_error!(
-                        instance_clone.eval.clone(),
-                        instance_clone.eval.eval(x.clone())
+                if let Some(b) = erecv.recv().await {
+                    let e = instance_clone.eval.clone();
+
+                    trace(
+                        instance_clone.clone(),
+                        "d3_supervisor::Trace",
+                        "eval in",
+                        b.clone(),
                     );
-                    println!(
-                        "eval out {}",
-                        out.clone().format(instance_clone.eval.clone())
+                    let out = async_error!(e.clone(), e.eval(b.clone()));
+                    trace(
+                        instance_clone.clone(),
+                        "d3_supervisor::TraceOut",
+                        "eval out",
+                        out.clone(),
                     );
                     instance_clone.dispatch.send(out.clone());
                     instance_clone.forwarder.send(out.clone());
+
+                    //
+                    // provisional metadata support -
+                    //    shift the meta into the data leaving the meta empty and
+                    //    throw into the local chute
+                    let shiftb = Batch::new(FactSet::Empty(), b.meta.clone());
+                    trace(
+                        instance_clone.clone(),
+                        "d3_supervisor::MetaTrace",
+                        "meval in",
+                        shiftb.clone(),
+                    );
+                    let mout = async_error!(e.clone(), e.eval(shiftb.clone()));
+                    trace(
+                        instance_clone.clone(),
+                        "d3_supervisor::MetaTrace",
+                        "meval in",
+                        mout.clone(),
+                    );
+                    instance_clone.dispatch.send(mout.clone());
+                    instance_clone.forwarder.send(mout.clone());
                 }
             }
         });

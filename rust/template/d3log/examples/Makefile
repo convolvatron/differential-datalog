@@ -9,7 +9,7 @@ all: run
 compiler:
 	(cd $(ROOT) ;  stack build && stack install)
 
-PROGRAM=retract
+PROGRAM=mini_skyline
 
 program: 
 	$(DDLOG) --no-staticlib --dynlib --action compile -L$(ROOT)/lib -L.. --d3log -i $(PROGRAM).dl

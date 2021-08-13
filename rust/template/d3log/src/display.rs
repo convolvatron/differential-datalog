@@ -98,6 +98,7 @@ async fn on_client(d: Display, stream_mut: AsyncClient) {
                 Opcode::Pong => {}
             },
             Some(Err(_err)) => {
+                // xxx - deassert browser
                 async_error!(e2.clone(), tx.send(Message::close(None)).await);
             }
             None => {}

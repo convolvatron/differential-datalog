@@ -6,6 +6,10 @@ typedef Time = u64
 // the uuid of the locale currently executing
 input relation Myself(me: D3logLocationId)
 
+// this is a byte pipe from a process. should probably have an
+// offset per fact? and maybe not time then? enum for kind? why kind?
+input relation TextStream(t: Time, kind:string, id: D3logLocationId, body:string)
+
 // Stdout
 // defines a service locale to express output to the user
 input relation Stdout(target: D3logLocationId)

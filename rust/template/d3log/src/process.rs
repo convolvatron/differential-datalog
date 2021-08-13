@@ -126,6 +126,7 @@ impl Child {
         }
     }
 
+    // fix nega vs posi
     pub fn report_status(&self) {
         self.management.send(fact!(
             d3_application::InstanceStatus,
@@ -183,28 +184,29 @@ impl ProcessInstance {
                 let i2 = self.instance.clone();
                 if process.get_struct_field("management").is_some() {
                     let c2 = child_obj.clone();
+                    let i3 = i2.clone();
                     i2.clone().rt.spawn(async move {
                         let mut jf = JsonFramer::new();
                         let mut first = true;
 
                         let management_to_child = Arc::new(FileDescriptorPort {
-                            instance: i2.clone(),
+                            instance: i3.clone(),
                             fd: Arc::new(AsyncMutex::new(
                                 AsyncFd::try_from(management_in_w).expect("async fd failed"),
                             )),
                         });
 
                         let sh_management =
-                            i2.broadcast.clone().subscribe(management_to_child.clone());
+                            i3.broadcast.clone().subscribe(management_to_child.clone());
 
-                        let i3 = i2.clone();
+                        let i4 = i3.clone();
                         async_error!(
-                            i2.eval.clone(),
+                            i3.eval.clone(),
                             read_output(management_out_r, move |b: &[u8]| {
-                                for i in async_error!(i3.eval.clone(), jf.append(b)) {
-                                    let s = async_error!(i3.eval.clone(), std::str::from_utf8(&i));
+                                for i in async_error!(i4.eval.clone(), jf.append(b)) {
+                                    let s = async_error!(i4.eval.clone(), std::str::from_utf8(&i));
                                     let b: Batch =
-                                        async_error!(i3.eval.clone(), serde_json::from_str(s));
+                                        async_error!(i4.eval.clone(), serde_json::from_str(s));
                                     sh_management.clone().send(b);
                                     if first {
                                         c2.clone().lock().expect("lock").report_status();
@@ -218,19 +220,29 @@ impl ProcessInstance {
                 }
 
                 let i2 = self.instance.clone();
-                i2.clone().rt.spawn(async move {
+                let i3 = self.instance.clone();
+                let id2 = id.clone();
+                self.instance.clone().rt.spawn(async move {
                     read_output(standard_out_r, |b: &[u8]| {
-                        // utf8 framing issues! - feed this into a relation
-                        print!("child {} {}", child, std::str::from_utf8(b).expect(""));
-                    })
-                    .await
+                        i2.clone().broadcast.send(fact!(d3_application::TextStream,
+                                                        t => i3.clone().eval.now().into_record(),
+                                                        kind => "stdout".into_record(),
+                                                        id => id2.clone(),
+                                                        body => std::str::from_utf8(b).expect("").into_record()));
+                    }).await
                 });
 
-                i2.clone().rt.spawn(async move {
+                let i2 = self.instance.clone();
+                let i3 = self.instance.clone();
+                let id2 = id.clone();
+                i3.clone().rt.spawn(async move {
                     read_output(standard_err_r, |b: &[u8]| {
-                        println!("child error {}", std::str::from_utf8(b).expect(""));
-                    })
-                    .await
+                        i2.clone().broadcast.send(fact!(d3_application::TextStream,
+                                                        t => i3.clone().eval.now().into_record(),
+                                                        kind => "stderr".into_record(),
+                                                        id => id2.clone(),
+                                                        body => std::str::from_utf8(b).expect("").into_record()));
+                    }).await
                 });
                 self.processes
                     .lock()
@@ -240,7 +252,6 @@ impl ProcessInstance {
             }
 
             Ok(ForkResult::Child) => {
-                // xxx - should be if true..but if some process has some junk fds it doesn't really notice
                 if process.get_struct_field("management").is_some() {
                     dup2(management_out_w, MANAGEMENT_OUTPUT_FD)?;
                     dup2(management_in_r, MANAGEMENT_INPUT_FD)?;

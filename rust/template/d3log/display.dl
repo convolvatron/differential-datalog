@@ -1,12 +1,25 @@
-relation Position(u:u128, x:u32, y:u32)
-// for lines - kinda cheesy huh?
-relation NextPosition(u:u128, x:u32, y:u32)
-relation Color(u:u128, color:string)
-relation Width(u:u128, width:u32)
-relation Kind(u:u128, kind:string)
-relation Text(u:u128, text:string)
-relation Radius(u:u128, r:u32)
-relation Border(u:u128, color:string)
+// Display Datalog
+// These relations are interpreted by the received batch in d3log/src/display.js
+// As with the other systems interfaces, the client defines the identifier.
 
+// We tried to make a kind of 'asbtract object' which shares common graphical
+// properties, but since Circles and Lines and Text look a bit different,
+// it ended up maybe being less useful and general than a different approach would be
+
+
+ // {Circle, Line, Rectangle} - this should be an enum? how does that show up in the batch?
+relation Kind(u:u128, kind:string)
+
+relation Position(u:u128, x:u32, y:u32)
+relation Color(u:u128, color:string)           
+
+relation NextPosition(u:u128, x:u32, y:u32)   // the second point for lines..and i guess rects
+relation Width(u:u128, width:u32)             // uhh, if border is width, what is width?
+relation Text(u:u128, text:string)            // object labels, so a property of a {Circle,Line,Rectangle} - text is broken
+relation Radius(u:u128, r:u32)                // only circles
+relation Border(u:u128, color:string)         // border for circle, but also width of a Line
+relation Opactity(u:u128, alpah:float)
+
+// browser is an announcement on the management bus 
 input relation Browser(loc:D3logLocationId, t:u64)
 

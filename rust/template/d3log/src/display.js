@@ -145,7 +145,10 @@ function websocket(url) {
                         break;
                     case "display::Border":
                         set(obj, "stroke", f.color)                    
-                        break;                        
+                        break;
+                    case "display::Opacity":
+                        set(obj, "opacity", f.opacity)                    
+                        break;                                                
                     case "display::Width":
                         set(obj, "stroke-width", f.width)                    
                         break;                        

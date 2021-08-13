@@ -23,7 +23,7 @@ fn path(e: Evaluator, f: FactSet) -> FactSet {
     let mut vo = Vec::new();
 
     for (r, f, w) in &RecordSet::from(e.clone(), f.clone()) {
-        if r == "path".to_string() {
+        if r == "d3_supervisor::Path".to_string() {
             if let Record::NamedStruct(_n, v) = f {
                 for (_, v) in v {
                     if let Record::Array(_, v) = v {
@@ -39,9 +39,9 @@ fn path(e: Evaluator, f: FactSet) -> FactSet {
     }
     vo.push(e.myself().into_record());
     outrs.insert(
-        "path".to_string(),
+        "d3_supervisor::Path".to_string(),
         Record::NamedStruct(
-            Cow::from("path"),
+            Cow::from("d3_supervisor::Path"),
             vec![(Cow::from("path"), Record::Array(CollectionKind::Vector, vo))],
         ),
         1,
@@ -190,9 +190,9 @@ impl Forwarder {
         let b = if rs.clone().scan("destination".to_string()).is_none() {
             let mut r = RecordSet::from(self.eval.clone(), b.clone().meta);
             r.insert(
-                "destination".to_string(),
+                "d3_supervisor::Destination".to_string(),
                 Record::NamedStruct(
-                    Cow::from("destination".to_string()),
+                    Cow::from("d3_supervisor::Destination".to_string()),
                     vec![(Cow::from("uuid".to_string()), nid.into_record())],
                 ),
                 1,
@@ -203,6 +203,11 @@ impl Forwarder {
         };
 
         let pu = path(self.eval.clone(), b.meta);
+        println!(
+            "forwarder augment {} {}",
+            self.eval.clone().myself(),
+            pu.clone()
+        );
         let b = Batch::new(pu, b.data);
         p.send(b);
         Ok(())

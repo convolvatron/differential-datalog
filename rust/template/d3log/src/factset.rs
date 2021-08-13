@@ -1,7 +1,7 @@
 use crate::{RecordSet, ValueSet};
 use core::fmt;
 use core::fmt::Display;
-
+use differential_datalog::record::Record;
 use serde::{de::SeqAccess, de::Visitor, Deserialize, Deserializer};
 use serde::{ser::SerializeMap, Serialize, Serializer};
 
@@ -62,6 +62,17 @@ impl Display for FactSet {
             FactSet::Value(b) => b.fmt(f),
             FactSet::Record(b) => b.fmt(f),
             FactSet::Empty() => f.write_str("<>"),
+        }
+    }
+}
+
+impl FactSet {
+    pub fn scan(self, r: String) -> Option<Record> {
+        // xx should coerce or complain if this is a valueset
+        if let FactSet::Record(rs) = self {
+            rs.scan(r)
+        } else {
+            None
         }
     }
 }
