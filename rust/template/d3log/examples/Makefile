@@ -17,8 +17,9 @@ program:
 compile: program
 	(cd $(PROGRAM)_ddlog ; cargo build --features distribution)
 
+# -r n4traceout
 start: compile
-	./$(PROGRAM)_ddlog/target/debug/$(PROGRAM)_cli -c -r n4traceout -m -i $(PROGRAM).json 
+	./$(PROGRAM)_ddlog/target/debug/$(PROGRAM)_cli -c -m -i $(PROGRAM).json 
 
 
 inc: compile start

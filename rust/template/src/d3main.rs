@@ -112,8 +112,12 @@ impl EvaluatorTrait for D3 {
         let mut upd = Vec::new();
         let b = ValueSet::from(self, input.data)?;
 
-        for (relid, v, _) in &b {
-            upd.push(Update::Insert { relid, v });
+        for (relid, v, w) in &b {
+            match w {
+                1 => upd.push(Update::Insert { relid, v }),
+                -1 => upd.push(Update::DeleteValue { relid, v }),
+                _ => panic!("inexpressible multiplicity"),
+            }
         }
 
         self.h.transaction_start()?;
