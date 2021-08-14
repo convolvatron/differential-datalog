@@ -88,12 +88,12 @@ impl Default for ValueSet {
 }
 
 impl ValueSet {
-    pub fn from_delta_map(deltas: DeltaMap<differential_datalog::ddval::DDValue>) -> Batch {
+    pub fn from_delta_map(deltas: DeltaMap<differential_datalog::ddval::DDValue>) -> FactSet {
         let n = Arc::new(Mutex::new(BatchInternal {
             deltas,
             timestamp: 0,
         }));
-        Batch::new(FactSet::Empty(), FactSet::Value(ValueSet(n)))
+        FactSet::Value(ValueSet(n))
     }
 
     pub fn new() -> ValueSet {

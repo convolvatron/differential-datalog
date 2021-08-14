@@ -17,25 +17,21 @@ struct ForwardingEntryHandler {
     forwarder: Arc<Forwarder>,
 }
 
-// this could have been relational i guess
+// this could have been relational instead of vector i guess
 fn path(e: Evaluator, f: FactSet) -> FactSet {
     let mut outrs = RecordSet::new();
     let mut vo = Vec::new();
 
-    for (r, f, w) in &RecordSet::from(e.clone(), f.clone()) {
-        if r == "d3_supervisor::Path".to_string() {
-            if let Record::NamedStruct(_n, v) = f {
-                for (_, v) in v {
-                    if let Record::Array(_, v) = v {
-                        for vi in v {
-                            vo.push(vi);
-                        }
+    if let Some(x) = f.clone().scan("d3_supervisor::Path".to_string()) {
+        if let Record::NamedStruct(_n, v) = x {
+            for (_, v) in v {
+                if let Record::Array(_, v) = v {
+                    for vi in v {
+                        vo.push(vi);
                     }
                 }
             }
-        } else {
-            outrs.insert(r, f, w);
-        };
+        }
     }
     vo.push(e.myself().into_record());
     outrs.insert(
@@ -82,16 +78,12 @@ struct Under {
 impl Transport for Under {
     fn send(&self, b: Batch) {
         let f2 = self.forwarder.clone();
-
-        for (_r, f, w) in &RecordSet::from(self.eval.clone(), b.data.clone()) {
-            println!("Node Input: {} {} {}", self.eval.myself(), f, w);
-        }
         let rs = &RecordSet::from(self.eval.clone(), b.clone().meta);
         if let Some(f) = rs.clone().scan("destination".to_string()) {
             if let Some(d) = f.get_struct_field("uuid") {
                 let n = async_error!(self.eval, u128::from_record(d));
                 if n != self.eval.clone().myself() {
-                    async_error!(self.eval, f2.clone().out(n, b.clone()));
+                    async_error!(self.eval, f2.clone().deliver(n, b.clone()));
                     return;
                 }
             }
@@ -172,13 +164,13 @@ impl Forwarder {
         }
     }
 
-    pub fn out(&self, nid: Node, b: Batch) -> Result<(), Error> {
+    pub fn deliver(&self, nid: Node, input: Batch) -> Result<(), Error> {
         let p = {
             match self.lookup(nid).lock() {
                 Ok(mut x) => match &x.port {
                     Some(x) => x.clone(),
                     None => {
-                        x.batches.push_front(b);
+                        x.batches.push_front(input.clone());
                         return Ok(());
                     }
                 },
@@ -186,9 +178,14 @@ impl Forwarder {
             }
         };
 
-        let rs = &RecordSet::from(self.eval.clone(), b.clone().meta);
-        let b = if rs.clone().scan("destination".to_string()).is_none() {
-            let mut r = RecordSet::from(self.eval.clone(), b.clone().meta);
+        let output = if input
+            .clone()
+            .meta
+            .clone()
+            .scan("destination".to_string())
+            .is_none()
+        {
+            let mut r = RecordSet::from(self.eval.clone(), input.clone().meta);
             r.insert(
                 "d3_supervisor::Destination".to_string(),
                 Record::NamedStruct(
@@ -197,19 +194,15 @@ impl Forwarder {
                 ),
                 1,
             );
-            Batch::new(FactSet::Record(r), b.data)
+            Batch::new(FactSet::Record(r), input.clone().data)
         } else {
-            b
+            input.clone()
         };
 
-        let pu = path(self.eval.clone(), b.meta);
-        println!(
-            "forwarder augment {} {}",
-            self.eval.clone().myself(),
-            pu.clone()
-        );
-        let b = Batch::new(pu, b.data);
-        p.send(b);
+        p.send(Batch::new(
+            path(self.eval.clone(), output.meta),
+            input.clone().data,
+        ));
         Ok(())
     }
 }
@@ -233,7 +226,7 @@ impl Transport for Forwarder {
         for (nid, nb) in output.drain() {
             async_error!(
                 self.eval.clone(),
-                self.out(nid, Batch::new(b.meta.clone(), FactSet::Value(*nb)))
+                self.deliver(nid, Batch::new(b.meta.clone(), FactSet::Value(*nb)))
             );
         }
     }

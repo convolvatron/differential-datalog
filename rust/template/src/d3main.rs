@@ -73,7 +73,10 @@ impl D3 {
         }
 
         let ad = Arc::new(D3 { h, uuid, error });
-        Ok((ad, ValueSet::from_delta_map(init_output)))
+        Ok((
+            ad,
+            Batch::new(FactSet::Empty(), ValueSet::from_delta_map(init_output)),
+        ))
     }
 }
 
@@ -110,7 +113,7 @@ impl EvaluatorTrait for D3 {
     // does it make sense to try to use the HDDLog record evaluation?
     fn eval(&self, input: Batch) -> Result<Batch, Error> {
         let mut upd = Vec::new();
-        let b = ValueSet::from(self, input.data)?;
+        let b = ValueSet::from(self, input.clone().data)?;
 
         for (relid, v, w) in &b {
             match w {
@@ -122,8 +125,9 @@ impl EvaluatorTrait for D3 {
 
         self.h.transaction_start()?;
         self.h.apply_updates(&mut upd.clone().drain(..))?;
-        Ok(ValueSet::from_delta_map(
-            self.h.transaction_commit_dump_changes()?,
+        Ok(Batch::new(
+            input.clone().meta,
+            ValueSet::from_delta_map(self.h.transaction_commit_dump_changes()?),
         ))
     }
 
@@ -271,25 +275,6 @@ pub fn start_d3log(
                                 instance_clone2.clone().eval.clone(),
                                 Batch::deserialize(i)
                             );
-                            /*
-                            for (r, f, w) in &RecordSet::from(
-                            instance_clone4.clone().eval.clone(),
-                                v.clone().data,
-                            ) {
-                                println!(
-                                    "incoming (from parent) management fact @{} r: {} w: {}",
-                                    instance_clone4.clone().eval.clone().myself(),
-                                    r,
-                                    w
-                                );
-                                if let Some(loc) = f.get_struct_field("location") {
-                                    println!("from loc {}", loc);
-                                }
-                                if let Some(dest) = f.get_struct_field("destination") {
-                                    println!("dest {}", dest);
-                                }
-                            }
-                            */
                             management_from_parent.clone().send(v);
                         }
                     })
