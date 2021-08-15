@@ -23,7 +23,7 @@ pub struct RecordSet {
 }
 
 pub fn read_record_json_file(filename: String, cb: &mut dyn FnMut(RecordSet)) -> Result<(), Error> {
-    let body = fs::read_to_string(filename.clone())?;
+    let body = fs::read_to_string(filename)?;
     let mut jf = JsonFramer::new();
     for i in jf.append(body.as_bytes())?.into_iter() {
         let s = std::str::from_utf8(&i)?;
@@ -92,11 +92,11 @@ impl Display for RecordSet {
             }
         }
 
-        f.write_str(&"<")?;
+        f.write_str("<")?;
         for (r, c) in m {
             f.write_str(&format!("({} {})", r, c))?;
         }
-        f.write_str(&">")?;
+        f.write_str(">")?;
         Ok(())
     }
 }
@@ -215,7 +215,7 @@ impl Serialize for RecordSet {
 
         for (v, w) in &self.records {
             if let Record::NamedStruct(n, v) = v {
-                let f = rels.entry(n).or_insert(Vec::new());
+                let f = rels.entry(n).or_insert_with(|| Vec::new());
                 f.push((v, w))
             }
         }

@@ -18,13 +18,12 @@ pub struct Broadcast {
 
 impl Broadcast {
     pub fn new(id: Node, accumulator: Arc<Mutex<ValueSet>>) -> Arc<Broadcast> {
-        let b = Arc::new(Broadcast {
+        Arc::new(Broadcast {
             id,
             accumulator,
             count: Arc::new(AtomicUsize::new(0)),
             ports: Arc::new(Mutex::new(Vec::new())),
-        });
-        b
+        })
     }
 }
 
@@ -64,7 +63,7 @@ impl PubSub for Arc<Broadcast> {
             });
 
             //            let p1 = Trace::new(b.clone().id, "up".to_string(), p1);
-            let p2 = b.clone().subscribe(p1);
+            let p2 = b.subscribe(p1);
             //            let p2 = Trace::new(b.clone().id, "down".to_string(), p2);
 
             let mut ports = self.ports.lock().expect("lock");

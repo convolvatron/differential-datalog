@@ -152,12 +152,8 @@ impl Transport for AccumulatePort {
 }
 
 fn trace(instance: Arc<Instance>, key: &str, prefix: &str, b: Batch) {
-    if let Some(_) = b.clone().meta.scan(key.to_string()) {
-        println!(
-            "{} {}",
-            prefix.to_string(),
-            b.clone().format(instance.eval.clone())
-        );
+    if b.clone().meta.scan(key.to_string()).is_some() {
+        println!("{} {}", prefix.to_string(), b.format(instance.eval.clone()));
     }
 }
 
@@ -189,11 +185,11 @@ impl Instance {
             uuid,
             broadcast: broadcast.clone(),
             eval: eval.clone(),
-            eval_port: eval_port.clone(),
-            init_batch: init_batch.clone(),
-            dispatch: dispatch.clone(),
+            eval_port,
+            init_batch,
+            dispatch,
             under,
-            forwarder: forwarder.clone(),
+            forwarder,
             rt: rt.clone(),
         });
 
@@ -247,7 +243,7 @@ impl Instance {
         // self registration leads to trouble
         //    forwarder.clone().register(uuid, instance.eval_port.clone());
 
-        broadcast.clone().subscribe(instance.eval_port.clone());
+        broadcast.subscribe(instance.eval_port.clone());
 
         ThreadInstance::new(instance.clone(), new_evaluator.clone())?;
         ProcessInstance::new(instance.clone(), new_evaluator.clone())?;

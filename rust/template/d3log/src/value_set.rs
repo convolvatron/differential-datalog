@@ -20,7 +20,7 @@ pub struct ValueSet(pub Arc<Mutex<BatchInternal>>);
 
 impl Display for ValueSet {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.write_str(&"<")?;
+        f.write_str("<")?;
         let batch_inner = self.0.lock().unwrap();
         for (relid, vees) in batch_inner.deltas.clone() {
             // I would really prefer a readable name..but we need an Evaluator and it doesn't seem right
@@ -33,7 +33,7 @@ impl Display for ValueSet {
             }
             f.write_str(&format!(" {})", m))?;
         }
-        f.write_str(&">")?;
+        f.write_str(">")?;
         Ok(())
     }
 }

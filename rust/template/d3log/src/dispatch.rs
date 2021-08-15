@@ -21,7 +21,7 @@ impl Transport for Dispatch {
     fn send(&self, b: Batch) {
         let mut output = HashMap::<u64, (Port, RecordSet)>::new();
 
-        for (rel, v, weight) in &RecordSet::from(self.eval.clone(), b.clone().data) {
+        for (rel, v, weight) in &RecordSet::from(self.eval.clone(), b.data) {
             if let Some(ports) = { self.handlers.lock().expect("lock").get(&rel) } {
                 for (i, p) in ports {
                     // we can probably do this databatch to recordbatch translation elsewhere and

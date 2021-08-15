@@ -83,7 +83,7 @@ impl Transport for Under {
             if let Some(d) = f.get_struct_field("uuid") {
                 let n = async_error!(self.eval, u128::from_record(d));
                 if n != self.eval.clone().myself() {
-                    async_error!(self.eval, f2.clone().deliver(n, b.clone()));
+                    async_error!(self.eval, f2.clone().deliver(n, b));
                     return;
                 }
             }
@@ -116,7 +116,6 @@ impl Forwarder {
             fib: Arc::new(Mutex::new(HashMap::new())),
         });
         dispatch
-            .clone()
             .register(
                 "d3_application::Forward",
                 Arc::new(ForwardingEntryHandler {
@@ -130,7 +129,7 @@ impl Forwarder {
             forwarder: f.clone(),
             up: eval_port,
         });
-        (inp, f.clone())
+        (inp, f)
     }
 
     fn lookup(&self, n: Node) -> Arc<Mutex<Entry>> {
@@ -170,7 +169,7 @@ impl Forwarder {
                 Ok(mut x) => match &x.port {
                     Some(x) => x.clone(),
                     None => {
-                        x.batches.push_front(input.clone());
+                        x.batches.push_front(input);
                         return Ok(());
                     }
                 },
@@ -178,13 +177,7 @@ impl Forwarder {
             }
         };
 
-        let output = if input
-            .clone()
-            .meta
-            .clone()
-            .scan("destination".to_string())
-            .is_none()
-        {
+        let output = if input.clone().meta.scan("destination".to_string()).is_none() {
             let mut r = RecordSet::from(self.eval.clone(), input.clone().meta);
             r.insert(
                 "d3_supervisor::Destination".to_string(),
@@ -199,10 +192,7 @@ impl Forwarder {
             input.clone()
         };
 
-        p.send(Batch::new(
-            path(self.eval.clone(), output.meta),
-            input.clone().data,
-        ));
+        p.send(Batch::new(path(self.eval.clone(), output.meta), input.data));
         Ok(())
     }
 }

@@ -109,7 +109,7 @@ async fn on_client(d: Display, stream_mut: AsyncClient) {
 
 async fn hello(d: Display, req: Request<Body>) -> Result<Response<Body>, Infallible> {
     if req.headers().contains_key("upgrade") {
-        return server_upgrade(req, move |x| on_client(d.clone(), x))
+        return server_upgrade(req, move |x| on_client(d, x))
             .await
             .map_err(|_| panic!("upgrade"));
     }

@@ -38,7 +38,7 @@ impl Transport for AddressListener {
                     let address = string.parse();
                     let loc: u128 = async_error!(
                         self.instance.eval.clone(),
-                        FromRecord::from_record(&location)
+                        FromRecord::from_record(location)
                     );
                     // we add an entry to forward this nid to this tcp address
                     let peer = Arc::new(TcpPeer {
@@ -164,7 +164,7 @@ impl TcpInput {
                 };
             }
         });
-        ti.clone()
+        ti
     }
 
     fn shutdown(&self) {

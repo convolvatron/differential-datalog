@@ -70,15 +70,18 @@ where
 
 pub fn read_output_fact(fd: Fd, id: Node, instance: Arc<Instance>, p: Port, kind: String) {
     let i2 = instance.clone();
-    instance.rt.spawn(async move {
-        read_output(fd, move |b: &[u8]| {
-            p.send(fact!(d3_application::TextStream,
+    instance.clone().rt.spawn(async move {
+        async_error!(
+            instance.eval.clone(),
+            read_output(fd, move |b: &[u8]| {
+                p.send(fact!(d3_application::TextStream,
                          t => i2.clone().eval.now().into_record(),
                          kind => kind.clone().into_record(),
                          id => id.clone().into_record(),
                          body => std::str::from_utf8(b).expect("").into_record()));
-        })
-        .await;
+            })
+            .await
+        );
     });
 }
 
@@ -227,12 +230,11 @@ impl ProcessInstance {
             Ok(ForkResult::Parent { child }) => {
                 let child_obj = Arc::new(Mutex::new(Child::new(id, child, self.instance.clone())));
 
-                let i2 = self.instance.clone();
                 // oddly symmetric with Child::read_management
                 if management {
                     let c2 = child_obj.clone();
-                    let i3 = i2.clone();
-                    i2.clone().rt.spawn(async move {
+                    let i3 = self.instance.clone();
+                    self.instance.clone().rt.spawn(async move {
                         let mut jf = JsonFramer::new();
                         let mut first = true;
 
