@@ -33,6 +33,7 @@ pub fn read_record_json_file(filename: String, cb: &mut dyn FnMut(RecordSet)) ->
     Ok(())
 }
 
+// this is pretty silly
 #[macro_export]
 macro_rules! basefact {
      ( $rel:path,  $($n:ident => $v:expr),* ) => {
@@ -48,7 +49,16 @@ macro_rules! fact {
                        Record::NamedStruct(
                            Cow::from(stringify!($rel).to_string()),
                            vec![$((Cow::from(stringify!($n)), $v),)*]), 1)))}
-    }
+}
+
+#[macro_export]
+macro_rules! recfact {
+    ( $rel:path,  $($n:ident => $v:expr),* ) => {
+        RecordSet::singleton(
+            Record::NamedStruct(
+                Cow::from(stringify!($rel).to_string()),
+                vec![$((Cow::from(stringify!($n)), $v),)*]), 1)}
+}
 
 #[macro_export]
 macro_rules! nega_fact {

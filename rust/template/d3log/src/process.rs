@@ -68,6 +68,20 @@ where
     }
 }
 
+pub fn read_output_fact(fd: Fd, id: Node, instance: Arc<Instance>, p: Port, kind: String) {
+    let i2 = instance.clone();
+    instance.rt.spawn(async move {
+        read_output(fd, move |b: &[u8]| {
+            p.send(fact!(d3_application::TextStream,
+                         t => i2.clone().eval.now().into_record(),
+                         kind => kind.clone().into_record(),
+                         id => id.clone().into_record(),
+                         body => std::str::from_utf8(b).expect("").into_record()));
+        })
+        .await;
+    });
+}
+
 #[derive(Clone)]
 pub struct ProcessInstance {
     instance: Arc<Instance>,
@@ -93,7 +107,9 @@ impl Transport for ProcessInstance {
             if w > 0 {
                 // Start instance if one is not already present
                 if child_pid.is_none() {
-                    let pid = self.make_child(p).expect("fork failure");
+                    let id = u128::from_record(p.get_struct_field("id").unwrap()).expect("target");
+                    let management = p.get_struct_field("management").is_some(); // isn't this a boolean from dd?
+                    let pid = self.make_child(p, id, management).expect("fork failure");
                     value.1 = Some(pid);
                 }
             } else if w <= 0 {
@@ -195,7 +211,7 @@ impl ProcessInstance {
     // potnetially addressed with a uuid or a url
 
     // since this is really an async error maybe deliver it here
-    pub fn make_child(&self, process: Record) -> Result<Pid, Error> {
+    pub fn make_child(&self, process: Record, id: Node, management: bool) -> Result<Pid, Error> {
         // ideally we wouldn't allocate the management pair
         // unless we were actually going to use it..really we should have
         // two input relations, one for d3log programs and one for other things
@@ -207,18 +223,13 @@ impl ProcessInstance {
         let (standard_out_r, standard_out_w) = pipe().unwrap();
         let (standard_err_r, standard_err_w) = pipe().unwrap();
 
-        let id = process.get_struct_field("id").unwrap();
-
         match unsafe { fork() } {
             Ok(ForkResult::Parent { child }) => {
-                let child_obj = Arc::new(Mutex::new(Child::new(
-                    u128::from_record(id).unwrap(),
-                    child,
-                    self.instance.clone(),
-                )));
+                let child_obj = Arc::new(Mutex::new(Child::new(id, child, self.instance.clone())));
 
                 let i2 = self.instance.clone();
-                if process.get_struct_field("management").is_some() {
+                // oddly symmetric with Child::read_management
+                if management {
                     let c2 = child_obj.clone();
                     let i3 = i2.clone();
                     i2.clone().rt.spawn(async move {
@@ -255,31 +266,21 @@ impl ProcessInstance {
                     });
                 }
 
-                let i2 = self.instance.clone();
-                let i3 = self.instance.clone();
-                let id2 = id.clone();
-                self.instance.clone().rt.spawn(async move {
-                    read_output(standard_out_r, |b: &[u8]| {
-                        i2.clone().broadcast.send(fact!(d3_application::TextStream,
-                                                        t => i3.clone().eval.now().into_record(),
-                                                        kind => "stdout".into_record(),
-                                                        id => id2.clone(),
-                                                        body => std::str::from_utf8(b).expect("").into_record()));
-                    }).await
-                });
+                read_output_fact(
+                    standard_out_r,
+                    id,
+                    self.instance.clone(),
+                    self.instance.broadcast.clone(),
+                    "stdout".to_string(),
+                );
+                read_output_fact(
+                    standard_err_r,
+                    id,
+                    self.instance.clone(),
+                    self.instance.broadcast.clone(),
+                    "stderr".to_string(),
+                );
 
-                let i2 = self.instance.clone();
-                let i3 = self.instance.clone();
-                let id2 = id.clone();
-                i3.clone().rt.spawn(async move {
-                    read_output(standard_err_r, |b: &[u8]| {
-                        i2.clone().broadcast.send(fact!(d3_application::TextStream,
-                                                        t => i3.clone().eval.now().into_record(),
-                                                        kind => "stderr".into_record(),
-                                                        id => id2.clone(),
-                                                        body => std::str::from_utf8(b).expect("").into_record()));
-                    }).await
-                });
                 self.processes
                     .lock()
                     .expect("lock")

@@ -10,14 +10,11 @@
 //
 // put a queue on the TcpPeer to allow for misordering wrt TcpAddress and to cover setup
 
-use tokio::{
-    io::AsyncReadExt, io::AsyncWriteExt, net::TcpListener, net::TcpStream, runtime::Runtime,
-    sync::Mutex,
-};
+use tokio::{io::AsyncReadExt, io::AsyncWriteExt, net::TcpListener, net::TcpStream, sync::Mutex};
 
 use crate::{
-    async_error, async_expect_some, fact, function, json_framer::JsonFramer, nega_fact, send_error,
-    Batch, Dred, Error, Evaluator, FactSet, Instance, Port, RecordSet, Transport,
+    async_error, async_expect_some, fact, function, json_framer::JsonFramer, recfact, send_error,
+    Batch, Dred, Error, Evaluator, FactSet, Instance, RecordSet, Transport,
 };
 
 use differential_datalog::record::*;
@@ -45,15 +42,13 @@ impl Transport for AddressListener {
                     );
                     // we add an entry to forward this nid to this tcp address
                     let peer = Arc::new(TcpPeer {
-                        management: self.instance.broadcast.clone(),
-                        eval: self.instance.eval.clone(),
+                        instance: self.instance.clone(),
                         tcp_inner: Arc::new(Mutex::new(TcpPeerInternal {
                             eval: self.instance.eval.clone(),
                             stream: None,
                             address: address.unwrap(), //async error
                                                        // sends: Vec::new(),
                         })),
-                        rt: self.instance.rt.clone(),
                     });
                     self.instance.forwarder.register(loc, peer);
                 }
@@ -69,7 +64,7 @@ impl Transport for AddressListener {
     }
 }
 
-// associated? to?
+// associated? with?
 pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
     instance.dispatch.register(
         "d3_application::TcpAddress",
@@ -78,84 +73,23 @@ pub fn tcp_bind(instance: Arc<Instance>) -> Result<(), Error> {
         }),
     )?;
 
-    let clone = instance.clone();
+    let i2 = instance.clone();
     instance.rt.spawn(async move {
         // xxx get external  ip address
-        let listener = async_error!(clone.eval.clone(), TcpListener::bind("127.0.0.1:0").await);
+        let listener = async_error!(i2.eval.clone(), TcpListener::bind("127.0.0.1:0").await);
         let addr = listener.local_addr().unwrap();
 
-        clone.broadcast.send(fact!(
-                d3_application::TcpAddress,
-                location => clone.uuid.into_record(),
-                destination => addr.to_string().into_record()));
+        i2.broadcast.send(fact!(
+            d3_application::TcpAddress,
+            location => i2.uuid.into_record(),
+            destination => addr.to_string().into_record()));
 
-        let clone = clone.clone();
+        let i3 = i2.clone();
         loop {
             // exchange ids..we dont need the initiators identity because this is all feed forward, but
             // it helps track whats going on
-
-            let (socket, _a) = async_error!(clone.eval.clone(), listener.accept().await);
-
-            clone.clone().broadcast.clone().send(fact!(
-                    d3_application::ConnectionStatus,
-                    time => clone.eval.now().into_record(),
-                    me => clone.uuid.into_record(),
-                    them => clone.uuid.into_record()));
-
-            // well, this is a huge .. something. if i just use the socket
-            // in the async move block, it actually gets dropped
-            let sclone = Arc::new(Mutex::new(socket));
-
-            let (dred, dred_port) = Dred::new(clone.clone().eval.clone(), clone.under.clone());
-
-            let clone2 = clone.clone();
-            clone.rt.spawn(async move {
-                let mut jf = JsonFramer::new();
-                let mut buffer = [0; 64];
-                loop {
-                    // xxx - remove socket from peer table on error and post notification
-                    let bytes_input = match sclone.lock().await.read(&mut buffer).await {
-                        Ok(bytes_input) => {
-                            for i in jf
-                                .append(&buffer[0..bytes_input])
-                                .expect("json coding error")
-                            {
-                                let b = async_error!(
-                                    clone2.eval.clone(),
-                                    Batch::deserialize(i.clone())
-                                );
-                                dred_port.send(b);
-                            }
-                            bytes_input
-                        }
-                        Err(_) => {
-                            // call Dred close to retract all the facts
-                            /*dred.close();
-                            // Retract the connection status fact too!
-                            // good! maybe we can just keep a copy of the original assertion?
-                            clone2.broadcast.send(nega_fact!(
-                                    d3_application::ConnectionStatus,
-                                    time => clone2.clone().eval.clone().now().into_record(),
-                                    me => clone2.clone().uuid.into_record(),
-                                    them => clone2.clone().uuid.into_record()));
-                            */
-                            0
-                        }
-                    };
-                    if bytes_input == 0 {
-                        dred.close_with_metadata();
-                        // Retract the connection status fact too!
-                        // good! maybe we can just keep a copy of the original assertion?
-                        clone2.broadcast.send(nega_fact!(
-                                    d3_application::ConnectionStatus,
-                                    time => clone2.clone().eval.clone().now().into_record(),
-                                    me => clone2.clone().uuid.into_record(),
-                                    them => clone2.clone().uuid.into_record()));
-
-                        break;
-                    }
-                }
-            });
+            let (socket, _a) = async_error!(i3.eval.clone(), listener.accept().await);
+            TcpInput::new(socket, i3.clone());
         }
     });
     Ok(())
@@ -170,9 +104,76 @@ struct TcpPeerInternal {
 #[derive(Clone)]
 struct TcpPeer {
     tcp_inner: Arc<Mutex<TcpPeerInternal>>,
-    eval: Evaluator,
-    management: Port,
-    rt: Arc<Runtime>,
+    instance: Arc<Instance>,
+}
+
+struct TcpInput {
+    instance: Arc<Instance>,
+    dred: Dred,
+    record: RecordSet,
+}
+
+// pass the output port down?
+impl TcpInput {
+    fn new(socket: TcpStream, instance: Arc<Instance>) -> Arc<TcpInput> {
+        let (dred, dred_port) = Dred::new(instance.eval.clone(), instance.under.clone());
+        let f = recfact!(
+            d3_application::ConnectionStatus,
+            time => instance.eval.now().into_record(),
+            me => instance.uuid.into_record(),
+            them => instance.uuid.into_record());
+
+        let ti = Arc::new(TcpInput {
+            dred,
+            instance: instance.clone(),
+            record: f,
+        });
+
+        instance.clone().broadcast.clone().send(Batch::new(
+            FactSet::Empty(),
+            FactSet::Record(ti.record.clone()),
+        ));
+
+        let sclone = Arc::new(Mutex::new(socket));
+        let t2 = ti.clone();
+        instance.rt.spawn(async move {
+            let mut jf = JsonFramer::new();
+            let mut buffer = [0; 64];
+            loop {
+                match sclone.lock().await.read(&mut buffer).await {
+                    Ok(bytes_input) => {
+                        for i in jf
+                            .append(&buffer[0..bytes_input])
+                            .expect("json coding error")
+                        {
+                            let b = async_error!(
+                                t2.clone().instance.eval.clone(),
+                                Batch::deserialize(i.clone())
+                            );
+                            dred_port.send(b);
+                        }
+                        if bytes_input == 0 {
+                            t2.clone().shutdown();
+                            break;
+                        }
+                    }
+                    Err(_) => {
+                        t2.clone().shutdown();
+                        break;
+                    }
+                };
+            }
+        });
+        ti.clone()
+    }
+
+    fn shutdown(&self) {
+        self.dred.close_with_metadata();
+        self.instance.broadcast.send(Batch::new(
+            FactSet::Empty(),
+            FactSet::Record(self.record.clone().negate()),
+        ));
+    }
 }
 
 impl Transport for TcpPeer {
@@ -180,7 +181,7 @@ impl Transport for TcpPeer {
         let tcp_inner_clone = self.tcp_inner.clone();
         // xxx - do these join handles need to be collected and waited upon for
         // resource recovery?
-        self.rt.spawn(async move {
+        self.instance.rt.spawn(async move {
             let mut tcp_peer = tcp_inner_clone.lock().await;
 
             if tcp_peer.stream.is_none() {
