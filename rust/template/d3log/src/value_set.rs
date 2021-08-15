@@ -2,7 +2,7 @@
 // over them, in particular general serde support. This currently sits on top
 // of DeltaMap, but that might change
 
-use crate::{Batch, Error, EvaluatorTrait, FactSet};
+use crate::{Error, EvaluatorTrait, FactSet};
 use differential_datalog::{ddval::DDValue, program::RelId, DeltaMap};
 use std::collections::BTreeMap;
 use std::fmt;
@@ -119,6 +119,14 @@ impl ValueSet {
     //        b.insert(mrel, v.clone(), 1);
     //        Ok(b)
     //    }
+
+    pub fn negate(self) -> ValueSet {
+        let mut n = ValueSet::new();
+        for (r, f, w) in &self {
+            n.insert(r, f, -w);
+        }
+        n
+    }
 
     pub fn from(e: &dyn EvaluatorTrait, f: FactSet) -> Result<ValueSet, Error> {
         match f {

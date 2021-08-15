@@ -111,13 +111,49 @@ impl Transport for ProcessInstance {
     }
 }
 
-struct Child {
+pub struct Child {
     uuid: u128,
     eval: Evaluator,
     management: Port,
 }
 
 impl Child {
+    pub fn read_management(instance: Arc<Instance>) {
+        let instance_clone = instance.clone();
+        let instance_clone2 = instance.clone();
+        instance.rt.block_on(async move {
+            let management_from_parent =
+                instance_clone
+                    .broadcast
+                    .clone()
+                    .subscribe(Arc::new(FileDescriptorPort {
+                        instance: instance_clone.clone(),
+                        fd: Arc::new(AsyncMutex::new(
+                            AsyncFd::try_from(MANAGEMENT_OUTPUT_FD).expect("asyncfd"),
+                        )),
+                    }));
+
+            instance_clone.rt.spawn(async {
+                let instance_clone3 = instance_clone2.clone();
+                let mut jf = JsonFramer::new();
+                async_error!(
+                    instance_clone3.clone().eval.clone(),
+                    read_output(MANAGEMENT_INPUT_FD, move |b: &[u8]| {
+                        let x = async_error!(instance_clone2.clone().eval.clone(), jf.append(b));
+                        for i in x {
+                            let v = async_error!(
+                                instance_clone2.clone().eval.clone(),
+                                Batch::deserialize(i)
+                            );
+                            management_from_parent.clone().send(v);
+                        }
+                    })
+                    .await
+                );
+            });
+        });
+    }
+
     pub fn new(uuid: u128, _pid: Pid, instance: Arc<Instance>) -> Self {
         Self {
             eval: instance.eval.clone(),

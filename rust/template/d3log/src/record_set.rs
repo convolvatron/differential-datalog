@@ -267,6 +267,14 @@ impl RecordSet {
         }
     }
 
+    pub fn negate(self) -> RecordSet {
+        let mut n = RecordSet::new();
+        for (r, f, w) in &self {
+            n.insert(r, f, -w);
+        }
+        n
+    }
+
     pub fn scan(self, s: String) -> Option<Record> {
         for (r, f, _w) in &self {
             if r == s {

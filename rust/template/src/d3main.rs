@@ -1,17 +1,13 @@
 use crate::{relid2name, relval_from_record, Relations};
 use d3log::{
-    async_error,
     batch::Batch,
     broadcast::PubSub,
     display::Display,
     error::Error,
     fact,
     factset::FactSet,
-    function,
-    json_framer::JsonFramer,
-    process::{read_output, FileDescriptorPort, MANAGEMENT_INPUT_FD, MANAGEMENT_OUTPUT_FD},
+    process::Child,
     record_set::{read_record_json_file, RecordSet},
-    send_error,
     tcp_network::tcp_bind,
     value_set::ValueSet,
     DebugPort, Evaluator, EvaluatorTrait, Instance, Node, Port, Transport,
@@ -34,8 +30,7 @@ use std::{
     sync::Arc,
     time::{Duration, SystemTime, UNIX_EPOCH},
 };
-use tokio::{runtime::Runtime, sync::Mutex as AsyncMutex, time::sleep};
-use tokio_fd::AsyncFd;
+use tokio::{runtime::Runtime, time::sleep};
 
 pub struct Null {}
 impl Transport for Null {
@@ -186,7 +181,7 @@ pub fn start_d3log(
     } else {
         let mut u = u128::from_be_bytes(rand::thread_rng().gen::<[u8; 16]>());
         // use uuid crate.. truncate because of json issues
-        u &= (1 << 63) - 1;
+        //        u &= (1 << 63) - 1;
         u = 100; // demo
         (u, true)
     };
@@ -248,40 +243,7 @@ pub fn start_d3log(
             .rt
             .spawn(async move { Display::new(i2, 8080).await });
     } else {
-        // xxx - move to process
-        let instance_clone = instance.clone();
-        let instance_clone2 = instance.clone();
-        instance.rt.block_on(async move {
-            let management_from_parent =
-                instance_clone
-                    .broadcast
-                    .clone()
-                    .subscribe(Arc::new(FileDescriptorPort {
-                        instance: instance_clone.clone(),
-                        fd: Arc::new(AsyncMutex::new(
-                            AsyncFd::try_from(MANAGEMENT_OUTPUT_FD).expect("asyncfd"),
-                        )),
-                    }));
-
-            instance_clone.rt.spawn(async {
-                let instance_clone3 = instance_clone2.clone();
-                let mut jf = JsonFramer::new();
-                async_error!(
-                    instance_clone3.clone().eval.clone(),
-                    read_output(MANAGEMENT_INPUT_FD, move |b: &[u8]| {
-                        let x = async_error!(instance_clone2.clone().eval.clone(), jf.append(b));
-                        for i in x {
-                            let v = async_error!(
-                                instance_clone2.clone().eval.clone(),
-                                Batch::deserialize(i)
-                            );
-                            management_from_parent.clone().send(v);
-                        }
-                    })
-                    .await
-                );
-            });
-        });
+        Child::read_management(instance.clone());
     }
 
     if let Some(f) = inputfile {
