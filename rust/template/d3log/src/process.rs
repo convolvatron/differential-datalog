@@ -136,14 +136,14 @@ impl Child {
     fn reader(instance: Arc<Instance>, infd: Fd, outfd: Fd) {
         let i2 = instance.clone();
 
-        let outp = Arc::new(FileDescriptorPort {
-            instance: i2.clone(),
-            fd: Arc::new(AsyncMutex::new(
-                AsyncFd::try_from(outfd).expect("async fd failed"),
-            )),
-        });
-
         instance.clone().rt.spawn(async move {
+            let outp = Arc::new(FileDescriptorPort {
+                instance: i2.clone(),
+                fd: Arc::new(AsyncMutex::new(
+                    AsyncFd::try_from(outfd).expect("async fd failed"),
+                )),
+            });
+
             let mut jf = JsonFramer::new();
             let management_input = instance.broadcast.clone().subscribe(outp.clone());
             let i3 = i2.clone();
