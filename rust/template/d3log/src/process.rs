@@ -231,6 +231,10 @@ impl Child {
                     .read_output_fact(standard_out_r, "stdout".to_string());
                 s2.clone()
                     .read_output_fact(standard_err_r, "stderr".to_string());
+
+                // this used to be conditional on the first mgmt msg from the child - which was both
+                // better and worse, but ultimately hard to wire up
+                self.report_status();
                 Ok(())
             }
 
@@ -249,6 +253,7 @@ impl Child {
                     CString::new(format!("uuid={}", self.uuid)).expect("CString::new failed");
                 let env2 = CString::new("RUST_BACKTRACE=1").expect("CString::new failed");
                 execve(&e.clone(), &[e.clone()], &[env1, env2])?;
+                //
                 panic!("exec failed?");
             }
             Err(_) => {
