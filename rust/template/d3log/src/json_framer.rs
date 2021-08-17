@@ -7,8 +7,6 @@
 // https://github.com/TimelyDataflow/timely-dataflow/blob/master/timely/src/dataflow/operators/to_stream.rs#L73
 // may lead to a better answer.
 //
-// if it were going to stay Lexement should really just be the leading group
-// character
 
 use crate::error::Error;
 use phf::{phf_map, phf_set};
@@ -31,6 +29,7 @@ static WHITESPACE: phf::Set<char> = phf_set! {' ', '\t', '\n'};
 
 pub struct JsonFramer {
     w: Vec<char>,
+    count: u64,
     reassembly: Vec<u8>,
 }
 
@@ -47,7 +46,7 @@ impl JsonFramer {
         let mut n = Vec::new();
         for i in body {
             let c = *i as char;
-
+            self.count = self.count + 1;
             if match self.w.last() {
                 Some(x) => *x == '"',
                 None => false,
@@ -75,7 +74,9 @@ impl JsonFramer {
 
                 if let Some(k) = ENDS.get(&c) {
                     if *k != self.w.pop().expect("mismatched grouping") {
-                        return Err(Error::new("mismatched grouping".to_string()));
+                        return Err(Error::new(
+                            format!("mismatched grouping {}{}", c, self.count).to_string(),
+                        ));
                     }
                     if self.w.is_empty() {
                         n.push(self.reassembly[..].to_vec());
@@ -90,6 +91,7 @@ impl JsonFramer {
     pub fn new() -> JsonFramer {
         JsonFramer {
             w: Vec::new(),
+            count: 0,
             reassembly: Vec::new(),
         }
     }

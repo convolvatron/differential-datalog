@@ -75,3 +75,7 @@ input relation InstanceStatus(time: Time,
 input relation Forward(target: D3logLocationId,
                        intermediate: D3logLocationId)
 
+
+// trace - not sure what the format will be (reflective batches i guess), or where it
+//   will go. but lets start
+output relation NodeTrace(n:D3logLocationId)

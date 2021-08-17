@@ -15,7 +15,7 @@ pub mod value_set;
 
 use differential_datalog::{ddval::DDValue, record::*, D3logLocationId};
 use std::borrow::Cow;
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc::{channel, Sender};
 
@@ -100,31 +100,32 @@ impl Transport for EvalPort {
     }
 }
 
-pub struct Trace {
+// a facility, which didn't find much use, to put a printf across a Port send
+pub struct PortTrace {
     uuid: Node,
     head: String,
     p: Port,
 }
 
-impl Trace {
+impl PortTrace {
     #[allow(dead_code)]
     fn new(uuid: Node, head: String, p: Port) -> Port {
-        Arc::new(Trace {
+        Arc::new(PortTrace {
             uuid,
-
             head,
             p: p.clone(),
         })
     }
 }
 
-impl Transport for Trace {
+impl Transport for PortTrace {
     fn send(&self, b: Batch) {
         println!("{} {} {} ", self.uuid, self.head, b);
         self.p.clone().send(b);
     }
 }
 
+// a uuid addressed service that prints facts out the processes stdout
 pub struct DebugPort {
     pub eval: Evaluator,
 }
@@ -138,17 +139,12 @@ impl Transport for DebugPort {
     }
 }
 
-struct AccumulatePort {
-    eval: Evaluator,
-    accumulator: Arc<Mutex<ValueSet>>,
+struct NodeTrace {
+    #[warn(dead_code)]
+    instance: Arc<Instance>,
 }
-
-impl Transport for AccumulatePort {
-    fn send(&self, b: Batch) {
-        for (r, f, w) in &(ValueSet::from(&(*self.eval), b.data).expect("iterator")) {
-            self.accumulator.lock().expect("lock").insert(r, f, w);
-        }
-    }
+impl Transport for NodeTrace {
+    fn send(&self, _b: Batch) {}
 }
 
 fn trace(instance: Arc<Instance>, key: &str, prefix: &str, b: Batch) {
@@ -163,8 +159,7 @@ impl Instance {
         new_evaluator: Arc<dyn Fn(Node, Port) -> Result<(Evaluator, Batch), Error> + Send + Sync>,
         uuid: u128,
     ) -> Result<Arc<Instance>, Error> {
-        let accumulator = Arc::new(Mutex::new(ValueSet::new()));
-        let broadcast = Broadcast::new(uuid, accumulator.clone());
+        let broadcast = Broadcast::new(uuid);
         let (eval, init_batch) = new_evaluator(uuid, broadcast.clone())?;
         let dispatch = Arc::new(Dispatch::new(eval.clone()));
         let (esend, mut erecv) = channel(20);
@@ -176,11 +171,7 @@ impl Instance {
         });
         let (under, forwarder) = Forwarder::new(eval.clone(), dispatch.clone(), eval_port.clone());
 
-        broadcast.clone().subscribe(Arc::new(AccumulatePort {
-            accumulator,
-            eval: eval.clone(),
-        }));
-
+        broadcast.clone().setup_accumulator(eval.clone());
         let instance = Arc::new(Instance {
             uuid,
             broadcast: broadcast.clone(),
@@ -247,6 +238,13 @@ impl Instance {
 
         ThreadInstance::new(instance.clone(), new_evaluator.clone())?;
         ProcessInstance::new(instance.clone(), new_evaluator.clone())?;
+
+        instance.dispatch.register(
+            "d3_application::NodeTrace",
+            Arc::new(NodeTrace {
+                instance: instance.clone(),
+            }),
+        )?;
 
         instance
             .eval_port
