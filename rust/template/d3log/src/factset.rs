@@ -75,4 +75,12 @@ impl FactSet {
             None
         }
     }
+    pub fn filter(self, r: String) -> FactSet {
+        // xx should coerce or complain if this is a valueset
+        if let FactSet::Record(rs) = self {
+            FactSet::Record(rs.filter(r))
+        } else {
+            panic!("no filter valueset");
+        }
+    }
 }

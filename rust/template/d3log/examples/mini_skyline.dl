@@ -44,7 +44,6 @@ Process(loc, "/Users/ehoffman/ddev/rust/template/d3log/examples/mini_skyline_ddl
 
 Schedule(1, 0,  100).
 Schedule(4, 2,  20).
-Schedule(3, 5,  30).
 Schedule(6, 0,  100).
 
 Location(1, 300, 100).

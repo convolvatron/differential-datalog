@@ -18,11 +18,11 @@ struct ForwardingEntryHandler {
 }
 
 // this could have been relational instead of vector i guess
-fn path(e: Evaluator, f: FactSet) -> FactSet {
+fn path(e: Evaluator, b: Batch) -> Batch {
     let mut outrs = RecordSet::new();
     let mut vo = Vec::new();
 
-    for (r, v, w) in &RecordSet::from(e.clone(), f) {
+    for (r, v, w) in &RecordSet::from(e.clone(), b.clone().meta) {
         if r == "d3_supervisor::Path" {
             if let Record::NamedStruct(_n, v) = v {
                 for (_, v) in v {
@@ -46,7 +46,7 @@ fn path(e: Evaluator, f: FactSet) -> FactSet {
         ),
         1,
     );
-    FactSet::Record(outrs)
+    Batch::new(FactSet::Record(outrs), b.data)
 }
 
 impl Transport for ForwardingEntryHandler {
@@ -92,7 +92,15 @@ impl Transport for Under {
                 }
             }
         }
-        self.up.send(b);
+        // we'd like this to have a forwarding entry, but then we can't remove this -
+        // use encap
+        let bfilter = Batch::new(
+            b.clone()
+                .meta
+                .filter("d3_supervisor::Destination".to_string()),
+            b.clone().data,
+        );
+        self.up.send(bfilter);
     }
 }
 
@@ -167,27 +175,13 @@ impl Forwarder {
         }
     }
 
-    pub fn deliver(&self, nid: Node, input: Batch) -> Result<(), Error> {
-        let p = {
-            match self.lookup(nid).lock() {
-                Ok(mut x) => match &x.port {
-                    Some(x) => x.clone(),
-                    None => {
-                        x.batches.push_front(input);
-                        return Ok(());
-                    }
-                },
-                Err(_) => panic!("lock"),
-            }
-        };
-
-        let output = if input
-            .clone()
+    fn set_destination(&self, b: Batch, nid: Node) -> Batch {
+        if b.clone()
             .meta
             .scan("d3_supervisor::Destination".to_string())
             .is_none()
         {
-            let mut r = RecordSet::from(self.eval.clone(), input.clone().meta);
+            let mut r = RecordSet::from(self.eval.clone(), b.clone().meta);
             r.insert(
                 "d3_supervisor::Destination".to_string(),
                 Record::NamedStruct(
@@ -196,14 +190,28 @@ impl Forwarder {
                 ),
                 1,
             );
-            FactSet::Record(r)
+            Batch::new(FactSet::Record(r), b.clone().data)
         } else {
-            input.clone().meta
+            b
+        }
+    }
+
+    pub fn deliver(&self, nid: Node, input: Batch) -> Result<(), Error> {
+        let b = path(self.eval.clone(), self.set_destination(input.clone(), nid));
+        let p = {
+            match self.lookup(nid).lock() {
+                Ok(mut x) => match &x.port {
+                    Some(x) => x.clone(),
+                    None => {
+                        x.batches.push_front(b);
+                        return Ok(());
+                    }
+                },
+                Err(_) => panic!("lock"),
+            }
         };
-        p.send(Batch::new(
-            path(self.eval.clone(), output.clone()),
-            input.data,
-        ));
+
+        p.send(b);
         Ok(())
     }
 }

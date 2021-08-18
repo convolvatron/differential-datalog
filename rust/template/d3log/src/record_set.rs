@@ -293,6 +293,16 @@ impl RecordSet {
         }
         None
     }
+
+    pub fn filter(self, s: String) -> Self {
+        let mut out = RecordSet::new();
+        for (r, f, w) in &self {
+            if r != s {
+                out.insert(r, f, w);
+            }
+        }
+        out
+    }
 }
 
 pub struct RecordSetIterator<'a> {

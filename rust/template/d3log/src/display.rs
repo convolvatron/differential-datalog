@@ -83,7 +83,6 @@ async fn on_client(d: Display, stream_mut: AsyncClient) {
                     // async error
                     let v = &msg.data().to_vec();
                     let s = from_utf8(v).expect("display json utf8 error");
-                    println!("browser data {}", s.clone());
                     let v: RecordSet =
                         serde_json::from_str(s.clone()).expect("display json parse error");
                     d.instance
