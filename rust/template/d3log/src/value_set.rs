@@ -128,6 +128,9 @@ impl ValueSet {
         n
     }
 
+    // XXX - it looks as if multiple facts from the same relation are getting compressed
+    // into a single fact with higher multiplicity. verify and FIXME
+    // almost certainly because ddvalue_from_record is losing information..field was a uuid
     pub fn from(e: &dyn EvaluatorTrait, f: FactSet) -> Result<ValueSet, Error> {
         match f {
             FactSet::Value(x) => Ok(x),

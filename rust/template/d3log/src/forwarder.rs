@@ -22,18 +22,22 @@ fn path(e: Evaluator, f: FactSet) -> FactSet {
     let mut outrs = RecordSet::new();
     let mut vo = Vec::new();
 
-    if let Some(x) = f.clone().scan("d3_supervisor::Path".to_string()) {
-        if let Record::NamedStruct(_n, v) = x {
-            for (_, v) in v {
-                if let Record::Array(_, v) = v {
-                    for vi in v {
-                        vo.push(vi);
+    for (r, v, w) in &RecordSet::from(e.clone(), f) {
+        if r == "d3_supervisor::Path" {
+            if let Record::NamedStruct(_n, v) = v {
+                for (_, v) in v {
+                    if let Record::Array(_, v) = v {
+                        for vi in v {
+                            vo.push(vi);
+                        }
                     }
                 }
             }
+        } else {
+            outrs.insert(r, v, w);
         }
     }
-    vo.push(e.myself().into_record());
+    vo.push(e.clone().myself().into_record());
     outrs.insert(
         "d3_supervisor::Path".to_string(),
         Record::NamedStruct(
@@ -79,7 +83,7 @@ impl Transport for Under {
     fn send(&self, b: Batch) {
         let f2 = self.forwarder.clone();
         let rs = &RecordSet::from(self.eval.clone(), b.clone().meta);
-        if let Some(f) = rs.clone().scan("destination".to_string()) {
+        if let Some(f) = rs.clone().scan("d3_supervisor::Destination".to_string()) {
             if let Some(d) = f.get_struct_field("uuid") {
                 let n = async_error!(self.eval, u128::from_record(d));
                 if n != self.eval.clone().myself() {
@@ -177,7 +181,12 @@ impl Forwarder {
             }
         };
 
-        let output = if input.clone().meta.scan("destination".to_string()).is_none() {
+        let output = if input
+            .clone()
+            .meta
+            .scan("d3_supervisor::Destination".to_string())
+            .is_none()
+        {
             let mut r = RecordSet::from(self.eval.clone(), input.clone().meta);
             r.insert(
                 "d3_supervisor::Destination".to_string(),
@@ -187,12 +196,14 @@ impl Forwarder {
                 ),
                 1,
             );
-            Batch::new(FactSet::Record(r), input.clone().data)
+            FactSet::Record(r)
         } else {
-            input.clone()
+            input.clone().meta
         };
-
-        p.send(Batch::new(path(self.eval.clone(), output.meta), input.data));
+        p.send(Batch::new(
+            path(self.eval.clone(), output.clone()),
+            input.data,
+        ));
         Ok(())
     }
 }

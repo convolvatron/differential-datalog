@@ -114,7 +114,7 @@ impl EvaluatorTrait for D3 {
             match w {
                 1 => upd.push(Update::Insert { relid, v }),
                 -1 => upd.push(Update::DeleteValue { relid, v }),
-                _ => panic!("inexpressible multiplicity"),
+                _ => panic!("inexpressible multiplicity {} {}", w, relid),
             }
         }
 

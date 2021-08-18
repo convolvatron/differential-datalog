@@ -15,7 +15,7 @@ pub mod value_set;
 
 use differential_datalog::{ddval::DDValue, record::*, D3logLocationId};
 use std::borrow::Cow;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use tokio::runtime::Runtime;
 use tokio::sync::mpsc::{channel, Sender};
 
@@ -66,6 +66,7 @@ pub struct Instance {
     pub dispatch: Arc<Dispatch>,
     pub forwarder: Arc<Forwarder>,
     pub rt: Arc<tokio::runtime::Runtime>,
+    pub trace: Arc<Mutex<isize>>,
 }
 
 pub type Evaluator = Arc<(dyn EvaluatorTrait + Send + Sync)>;
@@ -144,12 +145,28 @@ struct NodeTrace {
     instance: Arc<Instance>,
 }
 impl Transport for NodeTrace {
-    fn send(&self, _b: Batch) {}
+    fn send(&self, b: Batch) {
+        // fix extraction and loop
+        for (_r, f, w) in &RecordSet::from(self.instance.eval.clone(), b.data) {
+            let uuid_record = f.get_struct_field("id").unwrap();
+            let uuid = async_error!(self.instance.eval.clone(), Node::from_record(uuid_record));
+            if self.instance.uuid == uuid {
+                let mut i = self.instance.trace.lock().expect("lock");
+                *i = *i + w;
+            }
+        }
+    }
 }
 
 fn trace(instance: Arc<Instance>, key: &str, prefix: &str, b: Batch) {
-    if b.clone().meta.scan(key.to_string()).is_some() {
-        println!("{} {}", prefix.to_string(), b.format(instance.eval.clone()));
+    if b.clone().meta.scan(key.to_string()).is_some() || (*instance.trace.lock().expect("lock") > 0)
+    {
+        println!(
+            "{} {} {}",
+            prefix.to_string(),
+            instance.uuid,
+            b.format(instance.eval.clone())
+        );
     }
 }
 
@@ -173,6 +190,7 @@ impl Instance {
 
         broadcast.clone().setup_accumulator(eval.clone());
         let instance = Arc::new(Instance {
+            trace: Arc::new(Mutex::new(0)),
             uuid,
             broadcast: broadcast.clone(),
             eval: eval.clone(),
@@ -250,6 +268,7 @@ impl Instance {
             .eval_port
             .send(fact!(d3_application::Myself, me => uuid.into_record()));
 
+        instance.dispatch.send(instance.init_batch.clone()); //?
         Ok(instance)
     }
 }
