@@ -1,0 +1,7 @@
+// metadata - experimental
+input relation Destination(destination: D3logLocationId)
+input relation Path(path: Vec<D3logLocationId>)
+input relation Trace(on:bool)
+input relation TraceOut(on:bool)
+input relation MetaTrace(on:bool)
+input relation MetaTraceOut(on:bool)
