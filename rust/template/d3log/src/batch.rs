@@ -1,7 +1,10 @@
 use crate::{Error, Evaluator, FactSet, RecordSet};
 use core::fmt;
 use core::fmt::Display;
+use differential_datalog::record::IntoRecord;
+use differential_datalog::record::Record;
 use serde::{Deserialize, Serialize};
+use std::borrow::Cow;
 
 // should be able to derive
 #[derive(Clone, Serialize, Deserialize)]
@@ -11,6 +14,12 @@ pub struct Batch {
 }
 
 impl Batch {
+    // no meta
+    pub fn into_record(self) -> Record {
+        let v = Vec::new();
+        Record::NamedStruct(Cow::from("batch".to_string()), v)
+    }
+
     pub fn new(meta: FactSet, data: FactSet) -> Batch {
         Batch { meta, data }
     }

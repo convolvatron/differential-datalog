@@ -168,7 +168,7 @@ impl TcpInput {
     }
 
     fn shutdown(&self) {
-        self.dred.close_with_metadata();
+        self.dred.close(); // with_metadata for the discrete version
         self.instance.broadcast.send(Batch::new(
             FactSet::Empty(),
             FactSet::Record(self.record.clone().negate()),

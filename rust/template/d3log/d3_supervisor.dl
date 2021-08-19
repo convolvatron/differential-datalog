@@ -1,6 +1,6 @@
-// metadata - experimental
-input relation Destination(destination: D3logLocationId)
+extern type Batch
 input relation Path(path: Vec<D3logLocationId>)
+input relation ForwardRequest(target:D3logLocationId, batch: Batch)
 input relation Trace(on:bool)
 input relation TraceOut(on:bool)
 input relation MetaTrace(on:bool)

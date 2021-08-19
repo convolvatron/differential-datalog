@@ -96,7 +96,9 @@ impl Transport for EvalPort {
         let eclone = self.eval.clone();
         let sclone = self.s.clone();
         self.rt.spawn(async move {
-            async_error!(eclone, sclone.send(b.clone()).await);
+            if let Err(_) = sclone.send(b.clone()).await {
+                panic!("channel closed");
+            }
         });
     }
 }
@@ -158,6 +160,7 @@ impl Transport for NodeTrace {
     }
 }
 
+// facilities?
 fn trace(instance: Arc<Instance>, key: &str, prefix: &str, b: Batch) {
     if b.clone().meta.scan(key.to_string()).is_some() || (*instance.trace.lock().expect("lock") > 0)
     {
@@ -205,46 +208,49 @@ impl Instance {
         let instance_clone = instance.clone();
         rt.spawn(async move {
             loop {
-                // this will spin on close
-                if let Some(b) = erecv.recv().await {
-                    let e = instance_clone.eval.clone();
+                match erecv.recv().await {
+                    Some(b) => {
+                        let e = instance_clone.eval.clone();
 
-                    trace(
-                        instance_clone.clone(),
-                        "d3_supervisor::Trace",
-                        "eval in",
-                        b.clone(),
-                    );
-                    let out = async_error!(e.clone(), e.eval(b.clone()));
-                    trace(
-                        instance_clone.clone(),
-                        "d3_supervisor::TraceOut",
-                        "eval out",
-                        out.clone(),
-                    );
-                    instance_clone.dispatch.send(out.clone());
-                    instance_clone.forwarder.send(out.clone());
+                        trace(
+                            instance_clone.clone(),
+                            "d3_supervisor::Trace",
+                            "eval in",
+                            b.clone(),
+                        );
+                        let out = async_error!(e.clone(), e.eval(b.clone()));
+                        trace(
+                            instance_clone.clone(),
+                            "d3_supervisor::TraceOut",
+                            "eval out",
+                            out.clone(),
+                        );
+                        instance_clone.dispatch.send(out.clone());
+                        instance_clone.forwarder.send(out.clone());
 
-                    //
-                    // provisional metadata support -
-                    //    shift the meta into the data leaving the meta empty and
-                    //    throw into the local chute
-                    let shiftb = Batch::new(FactSet::Empty(), b.meta.clone());
-                    trace(
-                        instance_clone.clone(),
-                        "d3_supervisor::MetaTrace",
-                        "meval in",
-                        shiftb.clone(),
-                    );
-                    let mout = async_error!(e.clone(), e.eval(shiftb.clone()));
-                    trace(
-                        instance_clone.clone(),
-                        "d3_supervisor::MetaTrace",
-                        "meval in",
-                        mout.clone(),
-                    );
-                    instance_clone.dispatch.send(mout.clone());
-                    instance_clone.forwarder.send(mout.clone());
+                        //
+                        // provisional metadata support -
+                        //    shift the meta into the data leaving the meta empty and
+                        //    throw into the local chute
+                        // xxx - this is semi-deprecated
+                        let shiftb = Batch::new(FactSet::Empty(), b.meta.clone());
+                        trace(
+                            instance_clone.clone(),
+                            "d3_supervisor::MetaTrace",
+                            "meval in",
+                            shiftb.clone(),
+                        );
+                        let mout = async_error!(e.clone(), e.eval(shiftb.clone()));
+                        trace(
+                            instance_clone.clone(),
+                            "d3_supervisor::MetaTrace",
+                            "meval in",
+                            mout.clone(),
+                        );
+                        instance_clone.dispatch.send(mout.clone());
+                        instance_clone.forwarder.send(mout.clone());
+                    }
+                    None => panic!("evaluator closed the channel"),
                 }
             }
         });

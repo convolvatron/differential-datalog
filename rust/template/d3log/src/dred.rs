@@ -3,7 +3,10 @@
 // 1) Enumerate the performance bottlenecks on the current DRED
 // 2) Write tests (Both in module and global)
 
-use crate::{Batch, Evaluator, FactSet, Port, Transport, ValueSet};
+use crate::{basefact, Batch, Evaluator, FactSet, Port, RecordSet, Transport, ValueSet};
+use differential_datalog::record::IntoRecord;
+use differential_datalog::record::Record;
+use std::borrow::Cow;
 use std::sync::{Arc, Mutex};
 
 #[derive(Clone)]
@@ -46,7 +49,14 @@ impl Dred {
                 value_set.insert(r, v, w);
             }
 
-            let out_batch = Batch::new(batch.clone().meta, FactSet::Value(value_set));
+            let m = batch.clone().meta;
+            let mut r = RecordSet::from(self.eval.clone(), m);
+            r.insert(
+                "d3_supervisor::Trace".to_string(),
+                basefact!(d3_supervisor::Trace, on => true.into_record()),
+                1,
+            );
+            let out_batch = Batch::new(FactSet::Record(r), FactSet::Value(value_set));
             self.out_port.send(out_batch.clone());
         }
     }

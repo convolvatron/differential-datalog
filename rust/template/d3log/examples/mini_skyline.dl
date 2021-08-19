@@ -43,7 +43,10 @@ Process(loc, "/Users/ehoffman/ddev/rust/template/d3log/examples/mini_skyline_ddl
              Fact(_, loc).
 
 Schedule(1, 0,  100).
+Schedule(2, 8,  33).
+Schedule(3, 6,  25).
 Schedule(4, 2,  20).
+Schedule(5, 18, 40).
 Schedule(6, 0,  100).
 
 Location(1, 300, 100).
@@ -55,7 +58,6 @@ Location(5, 300, 500).
 // demo cheese
 Location(100, 100, 250).
 Location(6, 500, 250).
-
 
 Dist(ws) :-
   InstanceStatus(_, loc, _, _),

@@ -12,11 +12,6 @@ use std::collections::HashMap;
 use std::collections::VecDeque;
 use std::sync::{Arc, Mutex};
 
-struct ForwardingEntryHandler {
-    eval: Evaluator,
-    forwarder: Arc<Forwarder>,
-}
-
 // this could have been relational instead of vector i guess
 fn path(e: Evaluator, b: Batch) -> Batch {
     let mut outrs = RecordSet::new();
@@ -49,6 +44,11 @@ fn path(e: Evaluator, b: Batch) -> Batch {
     Batch::new(FactSet::Record(outrs), b.data)
 }
 
+struct ForwardingEntryHandler {
+    eval: Evaluator,
+    forwarder: Arc<Forwarder>,
+}
+
 impl Transport for ForwardingEntryHandler {
     fn send(&self, b: Batch) {
         // reconcile
@@ -60,47 +60,46 @@ impl Transport for ForwardingEntryHandler {
             let z = f.get_struct_field("intermediate").expect("intermediate");
             let intermediate = async_error!(self.eval, u128::from_record(z));
             if intermediate != self.eval.clone().myself() {
-                let e = self.forwarder.lookup(intermediate);
-                let mut e2 = { e.lock().expect("lock") };
-                match &e2.port {
-                    Some(p) => self.forwarder.register(target, p.clone()),
-                    None => {
-                        e2.registrations.push_back(target);
-                    }
-                }
+                self.forwarder.register(
+                    target,
+                    Arc::new(TunnelPort {
+                        target,
+                        intermediate,
+                        eval: self.eval.clone(),
+                        forwarder: self.forwarder.clone(),
+                    }),
+                );
             }
         }
     }
 }
 
-struct Under {
-    forwarder: Arc<Forwarder>,
+struct TunnelPort {
+    target: Node,
+    intermediate: Node,
     eval: Evaluator,
-    up: Port,
+    forwarder: Arc<Forwarder>,
 }
 
-impl Transport for Under {
+impl Transport for TunnelPort {
     fn send(&self, b: Batch) {
-        let f2 = self.forwarder.clone();
-        let rs = &RecordSet::from(self.eval.clone(), b.clone().meta);
-        if let Some(f) = rs.clone().scan("d3_supervisor::Destination".to_string()) {
-            if let Some(d) = f.get_struct_field("uuid") {
-                let n = async_error!(self.eval, u128::from_record(d));
-                if n != self.eval.clone().myself() {
-                    async_error!(self.eval, f2.clone().deliver(n, b));
-                    return;
-                }
-            }
-        }
-        // we'd like this to have a forwarding entry, but then we can't remove this -
-        // use encap
-        let bfilter = Batch::new(
-            b.clone()
-                .meta
-                .filter("d3_supervisor::Destination".to_string()),
-            b.clone().data,
+        let mut r = RecordSet::from(self.eval.clone(), b.clone().meta);
+        // use base fact?
+        r.insert(
+            "d3_supervisor::ForwardingRequest".to_string(),
+            Record::NamedStruct(
+                Cow::from("d3_supervisor::ForwardingRequest".to_string()),
+                vec![
+                    (Cow::from("nid".to_string()), self.target.into_record()),
+                    (Cow::from("batch".to_string()), b.clone().into_record()),
+                ],
+            ),
+            1,
         );
-        self.up.send(bfilter);
+        self.forwarder.deliver(
+            self.intermediate,
+            Batch::new(b.clone().meta, FactSet::Record(r)),
+        );
     }
 }
 
@@ -136,12 +135,7 @@ impl Forwarder {
                 }),
             )
             .expect("register");
-        let inp = Arc::new(Under {
-            eval,
-            forwarder: f.clone(),
-            up: eval_port,
-        });
-        (inp, f)
+        (eval_port, f)
     }
 
     fn lookup(&self, n: Node) -> Arc<Mutex<Entry>> {
@@ -175,35 +169,13 @@ impl Forwarder {
         }
     }
 
-    fn set_destination(&self, b: Batch, nid: Node) -> Batch {
-        if b.clone()
-            .meta
-            .scan("d3_supervisor::Destination".to_string())
-            .is_none()
-        {
-            let mut r = RecordSet::from(self.eval.clone(), b.clone().meta);
-            r.insert(
-                "d3_supervisor::Destination".to_string(),
-                Record::NamedStruct(
-                    Cow::from("d3_supervisor::Destination".to_string()),
-                    vec![(Cow::from("uuid".to_string()), nid.into_record())],
-                ),
-                1,
-            );
-            Batch::new(FactSet::Record(r), b.clone().data)
-        } else {
-            b
-        }
-    }
-
     pub fn deliver(&self, nid: Node, input: Batch) -> Result<(), Error> {
-        let b = path(self.eval.clone(), self.set_destination(input.clone(), nid));
         let p = {
             match self.lookup(nid).lock() {
                 Ok(mut x) => match &x.port {
                     Some(x) => x.clone(),
                     None => {
-                        x.batches.push_front(b);
+                        x.batches.push_front(input);
                         return Ok(());
                     }
                 },
@@ -211,7 +183,7 @@ impl Forwarder {
             }
         };
 
-        p.send(b);
+        p.send(input);
         Ok(())
     }
 }
