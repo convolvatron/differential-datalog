@@ -1,5 +1,5 @@
 import d3_application
-import d3_supervisor // not really:)
+import d3_supervisor
 import display
 
 input relation Fact(x:u64, k:u128)
@@ -34,7 +34,7 @@ Border(id, "black")@n :-     Browser(n, _), Line(id, _, _).
 // the path here should actually be an executable, or I suppose a url to one.
 // but here we may be able to use the value of argv[0] to make it
 // slightly less broken
-Process(loc, "/Users/ehoffman/ddev/rust/template/d3log/examples/mini_skyline_ddlog/target/debug/mini_skyline_cli", true) :-
+Process(loc, "/Users/ehoffman/demo2/rust/template/d3log/examples/mini_skyline_ddlog/target/debug/mini_skyline_cli", true) :-
              Clock(t),
              var now = t.group_by(()).max(),
              Schedule(loc, born, dies),
@@ -43,7 +43,6 @@ Process(loc, "/Users/ehoffman/ddev/rust/template/d3log/examples/mini_skyline_ddl
              Fact(_, loc).
 
 Schedule(1, 0,  100).
-Schedule(2, 10,  30).
 Schedule(6, 0,  400).
 
 Location(1, 300, 100).

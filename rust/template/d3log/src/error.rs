@@ -103,7 +103,8 @@ impl From<nix::Error> for Error {
 #[macro_export]
 macro_rules! send_error {
     ($e:expr, $t:expr) => {
-        $e.error(
+        panic!(
+            "error {} {} {} {} {}",
             $t.to_string().into_record(),
             std::line!().into_record(),
             std::file!().into_record(),
@@ -121,7 +122,6 @@ macro_rules! async_error {
         match $r {
             Err(x) => {
                 send_error!($e, x);
-                return;
             }
             Ok(x) => x,
         }
@@ -135,7 +135,7 @@ macro_rules! async_expect_some {
         match $r {
             None => {
                 send_error!($e, "expected value");
-                return;
+                //                return;
             }
             Some(x) => x,
         }

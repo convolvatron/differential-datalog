@@ -59,13 +59,41 @@ impl Transport for ForwardingEntryHandler {
                 let e = self.forwarder.lookup(intermediate);
                 let mut e2 = { e.lock().expect("lock") };
                 match &e2.port {
-                    Some(p) => self.forwarder.register(target, p.clone()),
+                    Some(p) => self.forwarder.register(
+                        target,
+                        Arc::new(ProxyForward {
+                            e: self.eval.clone(),
+                            target,
+                            p: p.clone(),
+                        }),
+                    ),
                     None => {
                         e2.registrations.push_back(target);
                     }
                 }
             }
         }
+    }
+}
+
+struct ProxyForward {
+    e: Evaluator,
+    target: Node,
+    p: Port,
+}
+
+impl Transport for ProxyForward {
+    fn send(&self, b: Batch) {
+        let mut m = RecordSet::from(self.e.clone(), b.meta.clone());
+        m.insert(
+            "d3_supervisor::Destination".to_string(),
+            Record::NamedStruct(
+                Cow::from("d3_supervisor::Destination".to_string()),
+                vec![(Cow::from("uuid".to_string()), self.target.into_record())],
+            ),
+            1,
+        );
+        self.p.send(Batch::new(FactSet::Record(m), b.clone().data))
     }
 }
 
@@ -79,7 +107,14 @@ impl Transport for Under {
     fn send(&self, b: Batch) {
         let f2 = self.forwarder.clone();
         let rs = &RecordSet::from(self.eval.clone(), b.clone().meta);
-        if let Some(f) = rs.clone().scan("destination".to_string()) {
+        println!(
+            "under {}",
+            match rs.clone().scan("destination".to_string()) {
+                Some(_) => "some",
+                None => "none",
+            }
+        );
+        if let Some(f) = rs.clone().scan("d3_supervisor::Destination".to_string()) {
             if let Some(d) = f.get_struct_field("uuid") {
                 let n = async_error!(self.eval, u128::from_record(d));
                 if n != self.eval.clone().myself() {
@@ -164,11 +199,15 @@ impl Forwarder {
     }
 
     pub fn deliver(&self, nid: Node, input: Batch) -> Result<(), Error> {
+        println!("deliver {} {}", self.clone().eval.myself(), nid);
+
         let p = {
             match self.lookup(nid).lock() {
                 Ok(mut x) => match &x.port {
                     Some(x) => x.clone(),
                     None => {
+                        println!("queue {} {}", self.eval.clone().myself(), nid);
+
                         x.batches.push_front(input);
                         return Ok(());
                     }
@@ -177,22 +216,7 @@ impl Forwarder {
             }
         };
 
-        let output = if input.clone().meta.scan("destination".to_string()).is_none() {
-            let mut r = RecordSet::from(self.eval.clone(), input.clone().meta);
-            r.insert(
-                "d3_supervisor::Destination".to_string(),
-                Record::NamedStruct(
-                    Cow::from("d3_supervisor::Destination".to_string()),
-                    vec![(Cow::from("uuid".to_string()), nid.into_record())],
-                ),
-                1,
-            );
-            Batch::new(FactSet::Record(r), input.clone().data)
-        } else {
-            input.clone()
-        };
-
-        p.send(Batch::new(path(self.eval.clone(), output.meta), input.data));
+        p.send(input);
         Ok(())
     }
 }

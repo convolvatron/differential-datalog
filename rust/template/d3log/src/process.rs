@@ -74,11 +74,11 @@ pub fn read_output_fact(fd: Fd, id: Node, instance: Arc<Instance>, p: Port, kind
         async_error!(
             instance.eval.clone(),
             read_output(fd, move |b: &[u8]| {
-                p.send(fact!(d3_application::TextStream,
-                         t => i2.clone().eval.now().into_record(),
-                         kind => kind.clone().into_record(),
-                         id => id.clone().into_record(),
-                         body => std::str::from_utf8(b).expect("").into_record()));
+                println!(
+                    "child {} out {}",
+                    id.clone().into_record(),
+                    std::str::from_utf8(b).expect("").into_record(),
+                );
             })
             .await
         );
