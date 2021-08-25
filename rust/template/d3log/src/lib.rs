@@ -152,7 +152,7 @@ impl Transport for AccumulatePort {
 }
 
 fn trace(instance: Arc<Instance>, key: &str, prefix: &str, b: Batch) {
-    println!("{} {}", prefix.to_string(), b.format(instance.eval.clone()));
+    //    println!("{} {}", prefix.to_string(), b.format(instance.eval.clone()));
 }
 
 impl Instance {

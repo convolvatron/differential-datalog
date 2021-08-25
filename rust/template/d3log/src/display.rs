@@ -30,8 +30,7 @@ pub struct Browser {
 
 impl Transport for Browser {
     fn send(&self, b: Batch) {
-        println!("display {}", b);
-
+        println!("browser {}", b.clone().format(self.eval.clone()));
         let a = self.clone();
         let rb = RecordSet::from(self.eval.clone(), b.data);
         // async error

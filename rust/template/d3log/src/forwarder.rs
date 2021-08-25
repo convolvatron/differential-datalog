@@ -107,13 +107,6 @@ impl Transport for Under {
     fn send(&self, b: Batch) {
         let f2 = self.forwarder.clone();
         let rs = &RecordSet::from(self.eval.clone(), b.clone().meta);
-        println!(
-            "under {}",
-            match rs.clone().scan("destination".to_string()) {
-                Some(_) => "some",
-                None => "none",
-            }
-        );
         if let Some(f) = rs.clone().scan("d3_supervisor::Destination".to_string()) {
             if let Some(d) = f.get_struct_field("uuid") {
                 let n = async_error!(self.eval, u128::from_record(d));
@@ -199,8 +192,6 @@ impl Forwarder {
     }
 
     pub fn deliver(&self, nid: Node, input: Batch) -> Result<(), Error> {
-        println!("deliver {} {}", self.clone().eval.myself(), nid);
-
         let p = {
             match self.lookup(nid).lock() {
                 Ok(mut x) => match &x.port {
@@ -216,7 +207,10 @@ impl Forwarder {
             }
         };
 
-        p.send(input);
+        p.send(Batch::new(
+            path(self.eval.clone(), input.clone().meta),
+            input.clone().data,
+        ));
         Ok(())
     }
 }

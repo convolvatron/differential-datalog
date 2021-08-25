@@ -3,7 +3,7 @@ import d3_supervisor
 import display
 
 input relation Fact(x:u64, k:u128)
-output relation Anchor(x:u64)
+output relation Acc(n: D3logLocationId, x:u64)
 relation PrintMSResult(x:u64, me:D3logLocationId)
 relation MSResult(x:u64, me:D3logLocationId)
 relation LocalizedFact(x:u64)
@@ -23,8 +23,8 @@ Width(id, 3)@n :-        Browser(n, _), Myself(id).
 Text(id, text)@n :-      Browser(n, _), Myself(id), var text = id.to_string().
 
 // rendering segment
-Position(id, x,y)@n :-      Browser(n, _), Line(id, a, _), Location(a, x, y).
-NextPosition(id, x,y)@n :-  Browser(n, _), Line(id, _, b), Location(b, x, y).
+Position(id, x, y)@n :-      Browser(n, _), Line(id, a, _), Location(a, x, y).
+NextPosition(id, x, y)@n :-  Browser(n, _), Line(id, _, b), Location(b, x, y).
 Kind(id, "line")@n :-       Browser(n, _), Line(id, _, _).
 Width(id, 5)@n :-           Browser(n, _), Line(id, _, _).
 // would like this to be color
@@ -42,7 +42,9 @@ Process(loc, "/Users/ehoffman/demo2/rust/template/d3log/examples/mini_skyline_dd
              dies >= now,             
              Fact(_, loc).
 
-Schedule(1, 0,  100).
+Schedule(1, 0,  10).
+Schedule(2, 2, 50).
+Schedule(3, 18, 40).
 Schedule(6, 0,  400).
 
 Location(1, 300, 100).
@@ -51,7 +53,6 @@ Location(3, 300, 300).
 Location(4, 300, 400).
 Location(5, 300, 500).
 
-// demo cheese
 Location(100, 100, 250).
 Location(6, 500, 250).
 
@@ -72,13 +73,27 @@ MSResult(x, y) :- LocalizedFact(x),
 PrintMSResult(x, y)@6 :-
                    MSResult(x, y).
 
-// group by clears out the preceeding references
-AccMSResult(x)@n :-
+// group by clears out the preceeding lexical bindings
+AccMSResult(x) :-
       PrintMSResult(v, _),
-      var x = v.group_by(()).group_sum(),
-      Stdout(n).      
-      
-Anchor(x) :- AccMSResult(x).
+      var x = v.group_by(()).group_sum().
+          
+Acc(10, s) :-
+       AccMSResult(s).
 
 
+// rendering sum
+Position(id, 600, 250)@n  :- Browser(n, _), Acc(id, _).
+Color(id, "white")@n      :- Browser(n, _), Acc(id, _).
+Radius(id, 50)@n          :- Browser(n, _), Acc(id, _).
+Kind(id, "circle")@n      :- Browser(n, _), Acc(id, _).
+Border(id, "black")@n     :- Browser(n, _), Acc(id, _).
+Width(id, 3)@n            :- Browser(n, _), Acc(id, _).
+Text(id, s.to_string())@n :- Browser(n, _), Acc(id, s). 
 
+Line(a*100+b, a, b) :- Path(list),
+                       var i = list.len()-1,
+                       var a = list.nth(i).unwrap_or_default() as u128,
+                       Myself(b).
+                       
+                           

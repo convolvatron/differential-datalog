@@ -5,7 +5,9 @@
 
 var svg = false
 var socket = false
+
 var connWait = 0
+var fadeTimeout = 0
 var svgns = "http://www.w3.org/2000/svg"
 
 function putBatch(k) {
@@ -15,17 +17,20 @@ function update(obj, prop, value, weight) {
     if (prop in obj) {
         weight += obj[prop][1]
     }
-    console.log("update", obj, prop, value, weight);
     obj[prop] = [value, weight];
-
-    if (svg in obj) {
+    if ("svg" in obj) {
         if (weight > 0) {
-            push(obj, k, val);
+            push(obj, prop);
         }
         // text is drawn as a separate pass w/ the associated object for stacking
-        if (weight > 0) {        
-            push_text(obj);
+        push_text(obj);
+        
+        if ((weight <= 0) && (prop == "kind")){
+            console.log("i think i removin")
+            svg.removeChild(obj.svg)
+            delete obj.svg
         }
+        
     }    
 }
 
@@ -33,6 +38,8 @@ function clear() {
     if (svg != false) {
         svg.parentNode.removeChild(svg)
     }
+    nodes = {}
+    clearTimeout(fadeTimeout)
     svg = document.createElementNS("http://www.w3.org/2000/svg","svg")
     svg.setAttributeNS(null, "width", "100%")
     svg.setAttributeNS(null, "height", "100%")
@@ -46,12 +53,12 @@ function send(item) {
 var nodes = {}
 
 function push_text(obj) {
-    if ("text" in obj && obj.svg) {
+    if (("text" in obj) && ("svg" in obj)) {
         t = obj.text;
         if (t[1] > 0) {
             tobj = document.createElementNS(svgns, "text");
             var textNode = document.createTextNode(t[0])
-            // position multiplicity
+            // position multiplicity!
             tobj.setAttributeNS(null,"x",obj.x[0]);
             tobj.setAttributeNS(null,"y",obj.y[0]);
             tobj.setAttributeNS(null,"text-anchor","middle");
@@ -61,8 +68,9 @@ function push_text(obj) {
             tobj.appendChild(textNode);
             svg.appendChild(tobj);
         } else {
-            if (textobj in obj) {
+            if ("textobj" in obj) {
                 svg.removeChild(obj.textobj);
+                delete obj.textobj
             }
         }
     }
@@ -74,21 +82,24 @@ function remap(m, k) {
 
 function push(obj, key){
     if (obj.svg) {
+        if (!(key in obj)) {
+            console.log("wtf?")
+        }
         o = obj[key]
         kind = obj.kind[0];
-
         
         if (kind == "circle") {
             key = remap({"x":"cx", "y":"cy"},key)
         }
         
         if (kind == "line") {
-            key = remap({"x":"x1", "y":"x2"},key)
+            key = remap({"x":"x1", "y":"y1"},key)
         }
         
         if (o[1] > 0) {
             switch (key){
             case "text":
+                push_text(obj)
                 break;
             default:
                 obj.svg.setAttributeNS(null,key,o[0], kind)
@@ -117,7 +128,7 @@ function create(obj) {
             // the line segments can be under
             push_text(obj);
         }
-        if ((obj in svg) && (k[1] <= 0)) {
+        if ((svg in obj) && (k[1] <= 0)) {
             svg.removeChild(obj.svg);        
             delete obj.svg
         }
@@ -134,16 +145,19 @@ function websocket(url) {
         }
         
         socket.onmessage = function(event){
+
             var msg = JSON.parse(event.data)
             for (var key in msg) {
                 let value = msg[key]
                 for (const fact of value){
                     let f = fact[0];
                     let w = fact[1];
+                    
                     if (!(f.u in nodes)) {
                         nodes[f.u] = {}
                     }
                     let obj = nodes[f.u];
+                    obj.u = f.u;
 
                     switch(key){
                     case "display::Kind":
@@ -170,6 +184,7 @@ function websocket(url) {
                         update(obj, "stroke-width", f.width, w)                    
                         break;                        
                     case "display::Text":
+                        console.log("texty", f.u, f.text, w)
                         update(obj, "text", f.text, w)                                        
 	                break;
                     case "display::Radius":
@@ -177,10 +192,13 @@ function websocket(url) {
                     }
                 }
             }
+
+            console.log("10", nodes["10"])
+            
             for (var k in nodes){
                 n = nodes[k]
-                if (("x" in n) && ("y" in n) && ("kind" in n) && !("svg" in n))
-                    create(n)
+                if (("x" in n) && ("y" in n) && ("kind" in n))
+                    create(n) // and destroy
             }
         }
         
@@ -196,8 +214,12 @@ function websocket(url) {
     }, connWait)
 }
 
+function fade() {
+}
+
 function start() {
     terms = document.baseURI.split(':')
+    fadeTimeout = setInterval(20, fade)
     terms[0] = 'ws'
     websocket(terms.join(":"))
 }
